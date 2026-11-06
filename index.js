@@ -14,6 +14,18 @@ app.use(cors({
 app.use(express.json())
 app.use(cookieParser())
 app.use('/api/auth', authRoutes)
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ status: 'success', message: 'Welcome to Chef Backend API' })
+})
+
+app.use((req, res) => {
+    res.status(404).json({ status: 'error', message: 'Route not found' })
+})
+
+app.use((err, req, res, next) => {
+    console.log(err.message)
+    res.status(err.statusCode || 500).json({ status: 'error', message: err.message || 'Internal Server Error' })
+})
 
 const startServer = async () => {
 
