@@ -1,7 +1,5 @@
 import mongoose from 'mongoose'
-
-const cities = ['Lahore', 'Karachi', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Multan', 'Peshawar', 'Quetta', 'Sialkot', 'Gujranwala']
-
+import cities from '../constants/cities.js'
 const userSchema = new mongoose.Schema(
     {
         name: {
