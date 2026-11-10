@@ -1,20 +1,24 @@
 import bcrypt from 'bcrypt'
 import User from '../models/User.js'
+import jwt from 'jsonwebtoken'
+import dotenv from 'dotenv'
+import crypto from 'crypto'
+dotenv.config()
 
-export const register = async (req,res) =>{
-    const { name, email, password, phone, city, address , role } = req.body
-    if(role === 'admin'){
+export const register = async (req, res) => {
+    const { name, email, password, phone, city, address, role } = req.body
+    if (role === 'admin') {
         const error = new Error('You cannot register as an admin')
         error.statusCode = 403
         throw error
     }
-    if(!name || !email || !password || !phone || !city || !address){
+    if (!name || !email || !password || !phone || !city || !address) {
         const error = new Error('Please provide all required fields')
         error.statusCode = 400
         throw error
     }
     const existingUser = await User.findOne({ email: email.trim().toLowerCase() })
-    if(existingUser){
+    if (existingUser) {
         const error = new Error('User already exists')
         error.statusCode = 409
         throw error
@@ -29,7 +33,89 @@ export const register = async (req,res) =>{
         address,
         role
     })
-    res.status(201).json({ status: 'success', message: 'User registered successfully', user: { id: user._id, name: user.name, email: user.email, role: user.role , city: user.city } })
+    res.status(201).json({ status: 'success', message: 'User registered successfully', user: { id: user._id, name: user.name, email: user.email, role: user.role, city: user.city } })
+}
+export const login = async (req, res) => {
+    const { email, password } = req.body
+    if (!email || !password) {
+        const error = new Error('Please provide email and password')
+        error.statusCode = 400
+        throw error
+    }
+    const user = await User.findOne({ email: email.trim().toLowerCase() }).select('+password')
+    if (!user) {
+        const error = new Error('Invalid email or password')
+        error.statusCode = 401
+        throw error
+    }
+    const isMatch = await bcrypt.compare(password, user.password)
+    if (!isMatch) {
+        const error = new Error('Invalid email or password')
+        error.statusCode = 401
+        throw error
+    }
+    if (user.status === 'suspended') {
+        const error = new Error(`Your account has been suspended.`)
+        error.statusCode = 403
+        throw error
+    }
+    const accessToken = jwt.sign({ id: user._id, role: user.role }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' })
+    const refreshToken = jwt.sign({ id: user._id }, process.env.REFRESH_TOKEN_SECRET, { expiresIn: '7d' })
+    user.refreshToken = crypto.createHash('sha256').update(refreshToken).digest('hex')
+    await user.save()
+
+    const isProduction = process.env.NODE_ENV === 'production'
+
+    res.cookie('accessToken', accessToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: 'lax',
+        maxAge: 15 * 60 * 1000
+    })
+
+    res.cookie('refreshToken', refreshToken, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 60 * 60 * 1000
+    })
 
 
+    res.status(200).json({ status: 'success', message: 'Login successful', user: { id: user._id, name: user.name, email: user.email, role: user.role, city: user.city } })
+}
+export const refresh = async (req, res) => {   
+    const refreshToken = req.cookies.refreshToken
+    if(!refreshToken) {
+        const error = new Error('Please log in again')
+        error.statusCode = 401
+        throw error
+    }
+    let decoded
+    try{
+   decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET)
+    }catch(err) { 
+        const error = new Error("Session expired. Please log in again")
+        error.statusCode = 401
+        throw error
+     }
+     const user = await User.findById(decoded.id).select('+refreshToken')
+     const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex')
+     if(!user || user.refreshToken !== hashedToken){
+        const error = new Error('Session expired. Please log in again')
+        error.statusCode = 401
+        throw error
+     }
+     if(user.status === 'suspended'){
+        const error = new Error(`Your account has been suspended.`)
+        error.statusCode = 403
+        throw error
+     }
+     const accessToken = jwt.sign({ id: user._id, role: user.role }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' })
+     res.cookie('accessToken', accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 15 * 60 * 1000
+    })
+    res.status(200).json({ status: 'success', message: 'Access token refreshed successfully' })
 }
