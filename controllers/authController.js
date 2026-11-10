@@ -137,6 +137,3 @@ export const logout = async (req, res) => {
 export const getMe = async (req, res) => {
     res.status(200).json({ status: 'success', user: { id: req.user._id, name: req.user.name, email: req.user.email, role: req.user.role, city: req.user.city, address: req.user.address, phone: req.user.phone } })
 }
-export const chefOnlyTest = async (req, res) => {
-    res.status(200).json({ status: 'success', message: `Welcome ${req.user.name}` })
-}

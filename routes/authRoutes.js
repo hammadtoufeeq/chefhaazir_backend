@@ -1,5 +1,5 @@
 import express from 'express'
-import { register , login , refresh , logout , getMe , chefOnlyTest } from '../controllers/authController.js'
+import { register , login , refresh , logout , getMe } from '../controllers/authController.js'
 import { protect , requireRole  } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
 import { registerSchema} from '../zod-validator/authSchema.js'
@@ -10,5 +10,4 @@ router.post('/login', login)
 router.post('/refresh', refresh)
 router.post('/logout', logout)
 router.get('/me', protect, getMe)
-router.get('/chef-only' , protect, requireRole('chef'), chefOnlyTest )
 export default router
