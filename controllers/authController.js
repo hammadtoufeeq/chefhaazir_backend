@@ -134,3 +134,5 @@ export const logout = async (req, res) => {
     res.clearCookie('refreshToken', cookieOptions)
     res.status(200).json({ status: 'success', message: 'Logged out successfully' })
 }
+export const getMe = async (req, res) => {
+    res.status(200).json({ status: 'success', user: { id: req.user._id, name: req.user.name, email: req.user.email, role: req.user.role, city: req.user.city , address: req.user.address , phone: req.user.phone } })}
