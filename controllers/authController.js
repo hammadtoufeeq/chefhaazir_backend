@@ -119,3 +119,18 @@ export const refresh = async (req, res) => {
     })
     res.status(200).json({ status: 'success', message: 'Access token refreshed successfully' })
 }
+export const logout = async (req, res) => {
+    const refreshToken = req.cookies.refreshToken
+    if(refreshToken){
+        const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex')
+        await User.findOneAndUpdate({ refreshToken: hashedToken }, { refreshToken: null })
+    }
+    const cookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+    }
+    res.clearCookie('accessToken', cookieOptions)
+    res.clearCookie('refreshToken', cookieOptions)
+    res.status(200).json({ status: 'success', message: 'Logged out successfully' })
+}
