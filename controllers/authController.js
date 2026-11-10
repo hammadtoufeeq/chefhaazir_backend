@@ -83,35 +83,35 @@ export const login = async (req, res) => {
 
     res.status(200).json({ status: 'success', message: 'Login successful', user: { id: user._id, name: user.name, email: user.email, role: user.role, city: user.city } })
 }
-export const refresh = async (req, res) => {   
+export const refresh = async (req, res) => {
     const refreshToken = req.cookies.refreshToken
-    if(!refreshToken) {
+    if (!refreshToken) {
         const error = new Error('Please log in again')
         error.statusCode = 401
         throw error
     }
     let decoded
-    try{
-   decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET)
-    }catch(err) { 
+    try {
+        decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET)
+    } catch (err) {
         const error = new Error("Session expired. Please log in again")
         error.statusCode = 401
         throw error
-     }
-     const user = await User.findById(decoded.id).select('+refreshToken')
-     const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex')
-     if(!user || user.refreshToken !== hashedToken){
+    }
+    const user = await User.findById(decoded.id).select('+refreshToken')
+    const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex')
+    if (!user || user.refreshToken !== hashedToken) {
         const error = new Error('Session expired. Please log in again')
         error.statusCode = 401
         throw error
-     }
-     if(user.status === 'suspended'){
+    }
+    if (user.status === 'suspended') {
         const error = new Error(`Your account has been suspended.`)
         error.statusCode = 403
         throw error
-     }
-     const accessToken = jwt.sign({ id: user._id, role: user.role }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' })
-     res.cookie('accessToken', accessToken, {
+    }
+    const accessToken = jwt.sign({ id: user._id, role: user.role }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' })
+    res.cookie('accessToken', accessToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
@@ -121,7 +121,7 @@ export const refresh = async (req, res) => {
 }
 export const logout = async (req, res) => {
     const refreshToken = req.cookies.refreshToken
-    if(refreshToken){
+    if (refreshToken) {
         const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex')
         await User.findOneAndUpdate({ refreshToken: hashedToken }, { refreshToken: null })
     }
@@ -135,4 +135,8 @@ export const logout = async (req, res) => {
     res.status(200).json({ status: 'success', message: 'Logged out successfully' })
 }
 export const getMe = async (req, res) => {
-    res.status(200).json({ status: 'success', user: { id: req.user._id, name: req.user.name, email: req.user.email, role: req.user.role, city: req.user.city , address: req.user.address , phone: req.user.phone } })}
+    res.status(200).json({ status: 'success', user: { id: req.user._id, name: req.user.name, email: req.user.email, role: req.user.role, city: req.user.city, address: req.user.address, phone: req.user.phone } })
+}
+export const chefOnlyTest = async (req, res) => {
+    res.status(200).json({ status: 'success', message: `Welcome ${req.user.name}` })
+}
