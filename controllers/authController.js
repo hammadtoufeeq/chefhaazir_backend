@@ -7,16 +7,6 @@ dotenv.config()
 
 export const register = async (req, res) => {
     const { name, email, password, phone, city, address, role } = req.body
-    if (role === 'admin') {
-        const error = new Error('You cannot register as an admin')
-        error.statusCode = 403
-        throw error
-    }
-    if (!name || !email || !password || !phone || !city || !address) {
-        const error = new Error('Please provide all required fields')
-        error.statusCode = 400
-        throw error
-    }
     const existingUser = await User.findOne({ email: email.trim().toLowerCase() })
     if (existingUser) {
         const error = new Error('User already exists')
@@ -37,11 +27,7 @@ export const register = async (req, res) => {
 }
 export const login = async (req, res) => {
     const { email, password } = req.body
-    if (!email || !password) {
-        const error = new Error('Please provide email and password')
-        error.statusCode = 400
-        throw error
-    }
+    
     const user = await User.findOne({ email: email.trim().toLowerCase() }).select('+password')
     if (!user) {
         const error = new Error('Invalid email or password')
