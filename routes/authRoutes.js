@@ -6,7 +6,7 @@ import { registerUserSchema} from '../zod-validator/authSchema.js'
 import { loginSchema } from '../zod-validator/login_zod_schema.js'
 const router = express.Router()
 
-router.post('/register', validate(registerUserSchema), registerUser)
+router.post('/register/user', validate(registerUserSchema), registerUser)
 router.post('/login', validate(loginSchema), login)
 router.post('/refresh', refresh)
 router.post('/logout', logout)
