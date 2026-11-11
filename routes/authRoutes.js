@@ -3,10 +3,11 @@ import { register , login , refresh , logout , getMe } from '../controllers/auth
 import { protect , requireRole  } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
 import { registerSchema} from '../zod-validator/authSchema.js'
+import { loginSchema } from '../zod-validator/login_zod_schema.js'
 const router = express.Router()
 
 router.post('/register', validate(registerSchema), register)
-router.post('/login', login)
+router.post('/login', validate(loginSchema), login)
 router.post('/refresh', refresh)
 router.post('/logout', logout)
 router.get('/me', protect, getMe)
