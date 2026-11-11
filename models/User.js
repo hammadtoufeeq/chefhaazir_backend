@@ -33,11 +33,12 @@ const userSchema = new mongoose.Schema(
         city: {
             type: String,
             enum: cities,
-            required: [true, 'City is required']
+            required: [function () { return this.role === 'user' }, 'City is required']
         },
         address: {
             type: String,
-            trim: true
+            trim: true,
+            required: [function () { return this.role === 'user' }, 'Address is required']
         },
         status: {
             type: String,

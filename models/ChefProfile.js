@@ -15,6 +15,11 @@ const chefProfileSchema = new mongoose.Schema(
             enum: cities,
             required: true
         },
+        address: {
+            type: String,
+            trim: true,
+            required: true
+        },
         cuisines: {
             type: [String],
             enum: cuisines,
