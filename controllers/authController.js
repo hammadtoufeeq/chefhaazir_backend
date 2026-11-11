@@ -5,8 +5,8 @@ import dotenv from 'dotenv'
 import crypto from 'crypto'
 dotenv.config()
 
-export const register = async (req, res) => {
-    const { name, email, password, phone, city, address, role } = req.body
+export const registerUser = async (req, res) => {
+    const { name, email, password, phone, city, address} = req.body
     const existingUser = await User.findOne({ email: email.trim().toLowerCase() })
     if (existingUser) {
         const error = new Error('User already exists')
@@ -21,7 +21,7 @@ export const register = async (req, res) => {
         phone,
         city,
         address,
-        role
+        role : 'user'
     })
     res.status(201).json({ status: 'success', message: 'User registered successfully', user: { id: user._id, name: user.name, email: user.email, role: user.role, city: user.city } })
 }
