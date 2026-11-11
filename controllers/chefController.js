@@ -1,10 +1,6 @@
 import ChefProfile from '../models/ChefProfile.js'
 import bcrypt from 'bcrypt'
 import User from '../models/User.js'
-import jwt from 'jsonwebtoken'
-import dotenv from 'dotenv'
-import crypto from 'crypto'
-dotenv.config()
 
 export const registerChef = async (req, res) => {
     const { name, email, password, phone, city, address, cuisines, ratePerSlot, bio } = req.body

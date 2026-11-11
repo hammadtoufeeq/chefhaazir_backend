@@ -4,9 +4,12 @@ import { protect , requireRole  } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
 import { registerUserSchema} from '../zod-validator/authSchema.js'
 import { loginSchema } from '../zod-validator/login_zod_schema.js'
+import { registerChef } from '../controllers/chefController.js'
+import { registerChefSchema } from '../zod-validator/chef_zod_schema.js'
 const router = express.Router()
 
 router.post('/register/user', validate(registerUserSchema), registerUser)
+router.post('/register/chef', validate(registerChefSchema), registerChef)
 router.post('/login', validate(loginSchema), login)
 router.post('/refresh', refresh)
 router.post('/logout', logout)
