@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import mongoose from 'mongoose'
 import ChefProfile from '../models/ChefProfile.js'
+import GroceryStore from '../models/GroceryStore.js'
 
 export const getChefs = async (req, res) => {
     const { approvalStatus } = req.query
@@ -102,5 +103,65 @@ export const updateChefApproval = async (req, res) => {
         status: 'success',
         message: `Chef ${profile.user.name} is now ${status}`,
         approvalStatus: profile.approvalStatus
+    })
+}
+
+export const getStores = async (req, res) => {
+    const { approvalStatus } = req.query
+
+    const filter = {}
+    if (approvalStatus) {
+        if (!['pending', 'approved', 'rejected'].includes(approvalStatus)) {
+            const error = new Error('approvalStatus must be pending, approved or rejected')
+            error.statusCode = 400
+            throw error
+        }
+        filter.approvalStatus = approvalStatus
+    }
+
+    const stores = await GroceryStore.find(filter)
+        .populate('owner', 'name email phone status')
+        .sort({ createdAt: -1 })
+
+    res.status(200).json({ status: 'success', count: stores.length, stores })
+}
+
+export const updateStoreApproval = async (req, res) => {
+    const { id } = req.params
+    const { status } = req.body
+
+    if (!mongoose.isValidObjectId(id)) {
+        const error = new Error('Invalid store id')
+        error.statusCode = 400
+        throw error
+    }
+
+    const store = await GroceryStore.findById(id)
+    if (!store) {
+        const error = new Error('Store not found')
+        error.statusCode = 404
+        throw error
+    }
+
+    if (status === 'approved') {
+        const otherApproved = await GroceryStore.findOne({
+            city: store.city,
+            approvalStatus: 'approved',
+            _id: { $ne: store._id }
+        })
+        if (otherApproved) {
+            const error = new Error(`${store.city} already has an approved store (${otherApproved.name})`)
+            error.statusCode = 409
+            throw error
+        }
+    }
+
+    store.approvalStatus = status
+    await store.save()
+
+    res.status(200).json({
+        status: 'success',
+        message: `Store ${store.name} is now ${status}`,
+        approvalStatus: store.approvalStatus
     })
 }

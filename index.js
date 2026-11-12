@@ -6,6 +6,7 @@ import connectDB from './config/db.js'
 import authRoutes from './routes/authRoutes.js'
 import chefRoutes from './routes/chefRoutes.js'
 import adminRoutes from './routes/adminRoutes.js'
+import groceryRoutes from './routes/groceryRoutes.js'
 
 const app = express()
 const PORT = process.env.PORT || 5000
@@ -23,6 +24,7 @@ app.use(cookieParser())
 app.use('/api/auth', authRoutes)
 app.use('/api/chefs', chefRoutes)
 app.use('/api/admin', adminRoutes)
+app.use('/api/grocery', groceryRoutes)
 
 
 app.get('/api/health', (req, res) => {
@@ -37,8 +39,22 @@ app.use((req, res) => {
 
 
 app.use((err, req, res, next) => {
-    console.log(err.message)
-    res.status(err.statusCode || 500).json({ status: 'error', message: err.message || 'Internal Server Error' })
+    let statusCode = err.statusCode || 500
+    let message = err.message || 'Internal Server Error'
+
+    // MongoDB unique index broken (e.g. a second approved store in the same city)
+    if (err.code === 11000) {
+        statusCode = 409
+        message = 'This record already exists'
+    }
+
+    // Mongoose rejected the data (wrong enum, bad id format, etc.)
+    if (err.name === 'ValidationError' || err.name === 'CastError') {
+        statusCode = 400
+    }
+
+    console.log(message)
+    res.status(statusCode).json({ status: 'error', message })
 })
 
 

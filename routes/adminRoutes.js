@@ -1,8 +1,8 @@
 import express from 'express'
-import { getChefs, generateChefOtp, updateChefApproval } from '../controllers/adminController.js'
+import { getChefs, generateChefOtp, updateChefApproval, getStores, updateStoreApproval } from '../controllers/adminController.js'
 import { protect, requireRole } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
-import { chefApprovalSchema } from '../zod-validator/admin_zod_schema.js'
+import { chefApprovalSchema, storeApprovalSchema } from '../zod-validator/admin_zod_schema.js'
 
 const router = express.Router()
 
@@ -11,5 +11,8 @@ router.use(protect, requireRole('admin'))
 router.get('/chefs', getChefs)
 router.post('/chefs/:id/otp', generateChefOtp)
 router.patch('/chefs/:id/approval', validate(chefApprovalSchema), updateChefApproval)
+
+router.get('/stores', getStores)
+router.patch('/stores/:id/approval', validate(storeApprovalSchema), updateStoreApproval)
 
 export default router
