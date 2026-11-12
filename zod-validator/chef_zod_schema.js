@@ -24,3 +24,7 @@ export const acceptContractSchema = z.object({
     acceptContract: z.literal(true, 'You must accept the contract'),
     acceptDeclaration: z.literal(true, 'You must accept the legal declaration')
 })
+
+export const verifyOtpSchema = z.object({
+    otp: z.string('OTP is required').trim().regex(/^\d{6}$/, 'OTP must be exactly 6 digits')
+})

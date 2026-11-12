@@ -1,3 +1,4 @@
+import crypto from 'crypto'
 import ChefProfile from '../models/ChefProfile.js'
 import bcrypt from 'bcrypt'
 import User from '../models/User.js'
@@ -123,4 +124,45 @@ export const acceptContract = async (req, res) => {
         message: 'Contract and declaration accepted',
         acceptedAt: now
     })
+}
+
+export const verifyOtp = async (req, res) => {
+    const profile = await ChefProfile.findOne({ user: req.user._id }).select('+otpHash +otpExpiresAt')
+    if (!profile) {
+        const error = new Error('Chef profile not found')
+        error.statusCode = 404
+        throw error
+    }
+
+    if (profile.phoneVerified) {
+        const error = new Error('Your phone is already verified')
+        error.statusCode = 400
+        throw error
+    }
+
+    if (!profile.otpHash || !profile.otpExpiresAt) {
+        const error = new Error('No OTP found. Please ask the admin to send you an OTP')
+        error.statusCode = 400
+        throw error
+    }
+
+    if (profile.otpExpiresAt < new Date()) {
+        const error = new Error('OTP has expired. Please ask the admin for a new one')
+        error.statusCode = 400
+        throw error
+    }
+
+    const hashedOtp = crypto.createHash('sha256').update(req.body.otp).digest('hex')
+    if (hashedOtp !== profile.otpHash) {
+        const error = new Error('Invalid OTP')
+        error.statusCode = 400
+        throw error
+    }
+
+    profile.phoneVerified = true
+    profile.otpHash = undefined
+    profile.otpExpiresAt = undefined
+    await profile.save()
+
+    res.status(200).json({ status: 'success', message: 'Phone verified successfully' })
 }
