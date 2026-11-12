@@ -51,3 +51,28 @@ export const registerChef = async (req, res) => {
         }
     })
 }
+export const getMyProfile = async (req, res) => {
+    const profile = await ChefProfile.findOne({ user: req.user._id })
+    if (!profile) {
+        const error = new Error('Chef profile not found')
+        error.statusCode = 404
+        throw error
+    }
+
+    res.status(200).json({
+        status: 'success',
+        profile: {
+            name: req.user.name,
+            email: req.user.email,
+            phone: req.user.phone,
+            city: profile.city,
+            address: profile.address,
+            cuisines: profile.cuisines,
+            ratePerSlot: profile.ratePerSlot,
+            bio: profile.bio,
+            phoneVerified: profile.phoneVerified,
+            contractAccepted: !!profile.contractAcceptedAt,
+            approvalStatus: profile.approvalStatus
+        }
+    })
+}
