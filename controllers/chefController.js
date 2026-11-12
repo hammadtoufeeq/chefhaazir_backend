@@ -1,4 +1,6 @@
 import crypto from 'crypto'
+import mongoose from 'mongoose'
+import { chefListQuerySchema } from '../zod-validator/chef_zod_schema.js'
 import ChefProfile from '../models/ChefProfile.js'
 import bcrypt from 'bcrypt'
 import User from '../models/User.js'
@@ -165,4 +167,94 @@ export const verifyOtp = async (req, res) => {
     await profile.save()
 
     res.status(200).json({ status: 'success', message: 'Phone verified successfully' })
+}
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+export const getChefs = async (req, res) => {
+    const result = chefListQuerySchema.safeParse(req.query)
+    if (!result.success) {
+        const error = new Error(result.error.issues[0].message)
+        error.statusCode = 400
+        throw error
+    }
+    const { search, city, cuisine, minPrice, maxPrice, page, limit } = result.data
+
+    // Step 1: chef accounts that are active (and match the name search)
+    const userFilter = { role: 'chef', status: 'active' }
+    if (search) {
+        userFilter.name = { $regex: escapeRegex(search), $options: 'i' }
+    }
+    const users = await User.find(userFilter).select('_id')
+    const userIds = users.map((user) => user._id)
+
+    // Step 2: only approved, verified chef profiles of those accounts
+    const profileFilter = {
+        user: { $in: userIds },
+        approvalStatus: 'approved',
+        phoneVerified: true
+    }
+    if (city) profileFilter.city = city
+    if (cuisine) profileFilter.cuisines = cuisine
+    if (minPrice !== undefined || maxPrice !== undefined) {
+        profileFilter.ratePerSlot = {}
+        if (minPrice !== undefined) profileFilter.ratePerSlot.$gte = minPrice
+        if (maxPrice !== undefined) profileFilter.ratePerSlot.$lte = maxPrice
+    }
+
+    // Step 3: count all matches, then fetch only this page
+    const total = await ChefProfile.countDocuments(profileFilter)
+    const profiles = await ChefProfile.find(profileFilter)
+        .populate('user', 'name')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+
+    res.status(200).json({
+        status: 'success',
+        chefs: profiles.map((profile) => ({
+            id: profile._id,
+            name: profile.user.name,
+            city: profile.city,
+            cuisines: profile.cuisines,
+            ratePerSlot: profile.ratePerSlot,
+            bio: profile.bio
+        })),
+        pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit)
+        }
+    })
+}
+
+export const getChefById = async (req, res) => {
+    const { id } = req.params
+
+    if (!mongoose.isValidObjectId(id)) {
+        const error = new Error('Invalid chef id')
+        error.statusCode = 400
+        throw error
+    }
+
+    const profile = await ChefProfile.findOne({ _id: id, approvalStatus: 'approved', phoneVerified: true })
+        .populate('user', 'name status')
+    if (!profile || profile.user.status !== 'active') {
+        const error = new Error('Chef not found')
+        error.statusCode = 404
+        throw error
+    }
+
+    res.status(200).json({
+        status: 'success',
+        chef: {
+            id: profile._id,
+            name: profile.user.name,
+            city: profile.city,
+            cuisines: profile.cuisines,
+            ratePerSlot: profile.ratePerSlot,
+            bio: profile.bio
+        }
+    })
 }

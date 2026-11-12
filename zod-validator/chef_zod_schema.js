@@ -28,3 +28,13 @@ export const acceptContractSchema = z.object({
 export const verifyOtpSchema = z.object({
     otp: z.string('OTP is required').trim().regex(/^\d{6}$/, 'OTP must be exactly 6 digits')
 })
+
+export const chefListQuerySchema = z.object({
+    search: z.string().trim().max(50, 'Search cannot be more than 50 characters').optional(),
+    city: z.enum(cities, 'Please select a valid city').optional(),
+    cuisine: z.enum(cuisines, 'Please select a valid cuisine').optional(),
+    minPrice: z.coerce.number('minPrice must be a number').min(0, 'minPrice cannot be negative').optional(),
+    maxPrice: z.coerce.number('maxPrice must be a number').min(0, 'maxPrice cannot be negative').optional(),
+    page: z.coerce.number('page must be a number').int('page must be a whole number').min(1, 'page must be at least 1').default(1),
+    limit: z.coerce.number('limit must be a number').int('limit must be a whole number').min(1, 'limit must be at least 1').max(50, 'limit cannot be more than 50').default(10)
+})
