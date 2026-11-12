@@ -4,12 +4,14 @@ import { protect, requireRole } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
 import { createItemSchema, updateItemSchema } from '../zod-validator/grocery_zod_schema.js'
 import { groceryOrderStatusSchema } from '../zod-validator/booking_zod_schema.js'
+import { getStoreStats } from '../controllers/statsController.js'
 
 const router = express.Router()
 
 // Grocery owner: own store and item CRUD
 router.get('/my-store', protect, requireRole('grocery_owner'), getMyStore)
 router.get('/my-items', protect, requireRole('grocery_owner'), getMyItems)
+router.get('/stats', protect, requireRole('grocery_owner'), getStoreStats)
 router.post('/items', protect, requireRole('grocery_owner'), validate(createItemSchema), createItem)
 router.patch('/items/:id', protect, requireRole('grocery_owner'), validate(updateItemSchema), updateItem)
 router.delete('/items/:id', protect, requireRole('grocery_owner'), deleteItem)
