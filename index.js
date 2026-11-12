@@ -9,6 +9,7 @@ import adminRoutes from './routes/adminRoutes.js'
 import groceryRoutes from './routes/groceryRoutes.js'
 import bookingRoutes from './routes/bookingRoutes.js'
 import settlementRoutes from './routes/settlementRoutes.js'
+import issueRoutes from './routes/issueRoutes.js'
 
 const app = express()
 const PORT = process.env.PORT || 5000
@@ -29,6 +30,7 @@ app.use('/api/admin', adminRoutes)
 app.use('/api/grocery', groceryRoutes)
 app.use('/api/bookings', bookingRoutes)
 app.use('/api/settlements', settlementRoutes)
+app.use('/api/issues', issueRoutes)
 
 
 app.get('/api/health', (req, res) => {

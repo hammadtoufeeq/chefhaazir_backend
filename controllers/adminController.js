@@ -5,6 +5,8 @@ import GroceryStore from '../models/GroceryStore.js'
 import Booking from '../models/Booking.js'
 import Settlement from '../models/Settlement.js'
 import User from '../models/User.js'
+import Issue from '../models/Issue.js'
+import { userListQuerySchema } from '../zod-validator/issue_zod_schema.js'
 import { payableFilter, getPaymentBlockedChefIds } from '../utils/payments.js'
 
 export const getChefs = async (req, res) => {
@@ -222,4 +224,110 @@ export const getChefPayments = async (req, res) => {
     cards.sort((a, b) => b.totalDue - a.totalDue)
 
     res.status(200).json({ status: 'success', count: cards.length, chefs: cards })
+}
+
+// Accounts with their total and genuine issue counts (aggregation)
+export const getUsers = async (req, res) => {
+    const result = userListQuerySchema.safeParse(req.query)
+    if (!result.success) {
+        const error = new Error(result.error.issues[0].message)
+        error.statusCode = 400
+        throw error
+    }
+    const { role, status, search, page, limit } = result.data
+
+    const filter = {}
+    if (role) filter.role = role
+    if (status) filter.status = status
+    if (search) {
+        const pattern = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        filter.$or = [{ name: { $regex: pattern, $options: 'i' } }, { email: { $regex: pattern, $options: 'i' } }]
+    }
+
+    const total = await User.countDocuments(filter)
+    const users = await User.find(filter)
+        .select('name email phone role status suspendedReason createdAt')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+
+    const counts = await Issue.aggregate([
+        { $match: { against: { $in: users.map((u) => u._id) } } },
+        {
+            $group: {
+                _id: '$against',
+                totalReports: { $sum: 1 },
+                genuineReports: { $sum: { $cond: [{ $eq: ['$status', 'genuine'] }, 1, 0] } }
+            }
+        }
+    ])
+
+    res.status(200).json({
+        status: 'success',
+        users: users.map((u) => {
+            const c = counts.find((x) => x._id.equals(u._id))
+            return { ...u.toObject(), totalReports: c ? c.totalReports : 0, genuineReports: c ? c.genuineReports : 0 }
+        }),
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    })
+}
+
+// Suspend or reactivate an account
+export const updateUserStatus = async (req, res) => {
+    const { id } = req.params
+    const { status, reason } = req.body
+
+    if (!mongoose.isValidObjectId(id)) {
+        const error = new Error('Invalid user id')
+        error.statusCode = 400
+        throw error
+    }
+    const user = await User.findById(id)
+    if (!user) {
+        const error = new Error('User not found')
+        error.statusCode = 404
+        throw error
+    }
+    if (user.role === 'admin') {
+        const error = new Error('Admin accounts cannot be suspended')
+        error.statusCode = 400
+        throw error
+    }
+    if (user.status === status) {
+        const error = new Error(`This account is already ${status}`)
+        error.statusCode = 409
+        throw error
+    }
+
+    let cancelledBookings = 0
+    if (status === 'suspended') {
+        user.status = 'suspended'
+        user.suspendedReason = reason
+        user.refreshToken = undefined     // ends every session immediately
+        await user.save()
+
+        // Their upcoming bookings are cancelled; the other side sees the reason
+        const who = user.role === 'chef' ? 'Chef' : 'Customer'
+        const upcoming = { status: { $in: ['pending', 'confirmed'] }, slotEnd: { $gt: new Date() } }
+        const field = user.role === 'chef' ? 'chef' : 'customer'
+        await Booking.updateMany(
+            { ...upcoming, [field]: user._id, groceryStatus: { $in: ['ordered', 'packed'] } },
+            { groceryStatus: 'cancelled' }
+        )
+        const result = await Booking.updateMany(
+            { ...upcoming, [field]: user._id },
+            { status: 'cancelled', slotLocked: false, cancelledBy: 'system', cancelReason: `${who} not available, booking cancelled` }
+        )
+        cancelledBookings = result.modifiedCount
+    } else {
+        user.status = 'active'
+        user.suspendedReason = undefined
+        await user.save()
+    }
+
+    res.status(200).json({
+        status: 'success',
+        message: `Account is now ${user.status}`,
+        cancelledBookings
+    })
 }
