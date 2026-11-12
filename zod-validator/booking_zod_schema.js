@@ -27,3 +27,17 @@ export const bookingListQuerySchema = z.object({
 export const availabilityQuerySchema = z.object({
     date: z.string('Date is required').regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be like YYYY-MM-DD').refine(isValidDate, 'Please provide a real date')
 })
+
+export const cancelBookingSchema = z.object({
+    reason: z.string('Reason must be text').trim().min(3, 'Reason must be at least 3 characters').max(300, 'Reason cannot be more than 300 characters').optional()
+})
+
+export const groceryOrderStatusSchema = z.object({
+    status: z.enum(['packed', 'delivered_to_chef'], 'Status must be packed or delivered_to_chef')
+})
+
+export const groceryOrdersQuerySchema = z.object({
+    status: z.enum(['ordered', 'packed', 'delivered_to_chef', 'return_requested', 'return_verified', 'cancelled'], 'Invalid grocery status').optional(),
+    page: z.coerce.number('page must be a number').int('page must be a whole number').min(1, 'page must be at least 1').default(1),
+    limit: z.coerce.number('limit must be a number').int('limit must be a whole number').min(1, 'limit must be at least 1').max(50, 'limit cannot be more than 50').default(20)
+})

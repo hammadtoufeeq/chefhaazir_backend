@@ -82,12 +82,19 @@ bookingSchema.index({ customer: 1, createdAt: -1 })
 
 const Booking = mongoose.model('Booking', bookingSchema)
 
-// Lazy expiry: pending requests past their 15-minute window become expired.
-// Called before reading or acting on bookings (no cron job on Vercel).
-export const expireStaleBookings = async (filter = {}) => {
+// Lazy status updates (no cron job on Vercel). Called before reading or
+// acting on bookings:
+// 1. pending requests past their 15-minute window become expired
+// 2. confirmed bookings 24 hours after the slot ended become completed
+export const refreshBookingStatuses = async (filter = {}) => {
+    const now = new Date()
     await Booking.updateMany(
-        { ...filter, status: 'pending', expiresAt: { $lt: new Date() } },
+        { ...filter, status: 'pending', expiresAt: { $lt: now } },
         { status: 'expired' }
+    )
+    await Booking.updateMany(
+        { ...filter, status: 'confirmed', slotEnd: { $lt: new Date(now.getTime() - 24 * 60 * 60 * 1000) } },
+        { status: 'completed', completedAt: now }
     )
 }
 

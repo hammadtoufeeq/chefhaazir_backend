@@ -1,5 +1,5 @@
 import mongoose from 'mongoose'
-import Booking, { expireStaleBookings } from '../models/Booking.js'
+import Booking, { refreshBookingStatuses } from '../models/Booking.js'
 import ChefProfile from '../models/ChefProfile.js'
 import GroceryStore from '../models/GroceryStore.js'
 import GroceryItem from '../models/GroceryItem.js'
@@ -52,7 +52,7 @@ export const createBooking = async (req, res) => {
     }
 
     // Same customer already waiting for this chef and slot?
-    await expireStaleBookings({ customer: customer._id, chef: chefUserId, date, slot })
+    await refreshBookingStatuses({ customer: customer._id, chef: chefUserId, date, slot })
     const duplicate = await Booking.findOne({ customer: customer._id, chef: chefUserId, date, slot, status: 'pending' })
     if (duplicate) {
         throw httpError('You already have a pending request for this chef and slot', 409)
@@ -163,7 +163,7 @@ const parseListQuery = (query) => {
 
 export const getMyBookings = async (req, res) => {
     const { status, page, limit } = parseListQuery(req.query)
-    await expireStaleBookings({ customer: req.user._id })
+    await refreshBookingStatuses({ customer: req.user._id })
 
     const filter = { customer: req.user._id }
     if (status) filter.status = status
@@ -185,7 +185,7 @@ export const getMyBookings = async (req, res) => {
 
 export const getChefBookings = async (req, res) => {
     const { status, page, limit } = parseListQuery(req.query)
-    await expireStaleBookings({ chef: req.user._id })
+    await refreshBookingStatuses({ chef: req.user._id })
 
     const filter = { chef: req.user._id }
     if (status) filter.status = status
@@ -221,7 +221,7 @@ export const getBookingById = async (req, res) => {
         throw httpError('Invalid booking id', 400)
     }
 
-    await expireStaleBookings({ _id: id })
+    await refreshBookingStatuses({ _id: id })
     const booking = await Booking.findById(id)
         .populate('customer', 'name phone')
         .populate('chef', 'name phone')
@@ -347,4 +347,108 @@ export const getChefAvailability = async (req, res) => {
     })
 
     res.status(200).json({ status: 'success', date, slots })
+}
+
+// ---------- Cancel, complete, grocery return ----------
+
+const CANCEL_DEADLINE_MINUTES = 90  // user and chef can cancel until 1.5 hours before the slot
+
+export const cancelBooking = async (req, res) => {
+    const { id } = req.params
+    if (!mongoose.isValidObjectId(id)) {
+        throw httpError('Invalid booking id', 400)
+    }
+
+    await refreshBookingStatuses({ _id: id })
+    const booking = await Booking.findById(id)
+    if (!booking) {
+        throw httpError('Booking not found', 404)
+    }
+
+    const role = req.user.role
+    const isCustomer = booking.customer.equals(req.user._id)
+    const isChef = booking.chef.equals(req.user._id)
+    if (role !== 'admin' && !isCustomer && !isChef) {
+        throw httpError('You can only cancel your own bookings', 403)
+    }
+
+    if (!['pending', 'confirmed'].includes(booking.status)) {
+        throw httpError(`A ${booking.status} booking cannot be cancelled`, 409)
+    }
+
+    const now = Date.now()
+    if (role === 'admin') {
+        if (booking.slotEnd.getTime() <= now) {
+            throw httpError('This slot has already ended', 400)
+        }
+    } else if (booking.slotStart.getTime() - now < CANCEL_DEADLINE_MINUTES * MINUTE) {
+        throw httpError('Bookings can only be cancelled until 1.5 hours before the slot', 400)
+    }
+
+    booking.status = 'cancelled'
+    booking.slotLocked = false
+    booking.cancelledBy = role === 'admin' ? 'admin' : isChef ? 'chef' : 'user'
+    booking.cancelReason = req.body.reason
+    // Groceries not yet with the chef are simply cancelled; delivered ones need a return
+    if (['ordered', 'packed'].includes(booking.groceryStatus)) {
+        booking.groceryStatus = 'cancelled'
+    }
+    await booking.save()
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Booking cancelled',
+        groceryStatus: booking.groceryStatus,
+        groceryReturnNeeded: booking.groceryStatus === 'delivered_to_chef'
+    })
+}
+
+export const completeBooking = async (req, res) => {
+    const { id } = req.params
+    if (!mongoose.isValidObjectId(id)) {
+        throw httpError('Invalid booking id', 400)
+    }
+
+    const booking = await Booking.findById(id)
+    if (!booking) {
+        throw httpError('Booking not found', 404)
+    }
+    if (!booking.chef.equals(req.user._id)) {
+        throw httpError('You can only complete your own bookings', 403)
+    }
+    if (booking.status !== 'confirmed') {
+        throw httpError(`Only confirmed bookings can be completed (this one is ${booking.status})`, 409)
+    }
+    if (booking.slotEnd.getTime() > Date.now()) {
+        throw httpError('You can mark the booking completed only after the slot ends', 400)
+    }
+
+    booking.status = 'completed'
+    booking.completedAt = new Date()
+    await booking.save()
+
+    res.status(200).json({ status: 'success', message: 'Booking marked as completed' })
+}
+
+export const requestGroceryReturn = async (req, res) => {
+    const { id } = req.params
+    if (!mongoose.isValidObjectId(id)) {
+        throw httpError('Invalid booking id', 400)
+    }
+
+    const booking = await Booking.findById(id)
+    if (!booking) {
+        throw httpError('Booking not found', 404)
+    }
+    if (!booking.chef.equals(req.user._id)) {
+        throw httpError('You can only return groceries of your own bookings', 403)
+    }
+    if (booking.status !== 'cancelled' || booking.groceryStatus !== 'delivered_to_chef') {
+        throw httpError('A return is only for cancelled bookings whose groceries were delivered to you', 400)
+    }
+
+    booking.groceryStatus = 'return_requested'
+    await booking.save()
+
+    res.status(200).json({ status: 'success', message: 'Return requested. Please send the groceries back to the store' })
 }
