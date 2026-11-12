@@ -12,7 +12,7 @@ const createAdmin = async () => {
         process.exit(1)
     }
 
-    await connectDB()
+    await connectDB().catch((error) => { console.error(`MongoDB connection failed: ${error.message}`); process.exit(1) })
 
     const existingUser = await User.findOne({ email: ADMIN_EMAIL.toLowerCase() })
     if (existingUser) {

@@ -23,6 +23,21 @@ app.use(express.json())
 
 app.use(cookieParser())
 
+// Health check works even if the database is down
+app.get('/', (req, res) => {
+    res.status(200).json({ status: 'success', message: 'Chef Haazir API. Try /api/health' })
+})
+
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ status: 'success', message: 'Welcome to Chef Backend API' })
+})
+
+// Make sure MongoDB is connected before any route runs (needed on Vercel)
+app.use(async (req, res, next) => {
+    await connectDB()
+    next()
+})
+
 
 app.use('/api/auth', authRoutes)
 app.use('/api/chefs', chefRoutes)
@@ -31,11 +46,6 @@ app.use('/api/grocery', groceryRoutes)
 app.use('/api/bookings', bookingRoutes)
 app.use('/api/settlements', settlementRoutes)
 app.use('/api/issues', issueRoutes)
-
-
-app.get('/api/health', (req, res) => {
-    res.status(200).json({ status: 'success', message: 'Welcome to Chef Backend API' })
-})
 
 
 app.use((req, res) => {
@@ -64,11 +74,18 @@ app.use((err, req, res, next) => {
 })
 
 
-const startServer = async () => {
-
-    await connectDB()
-    app.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`)
-    })
+// Locally we start a normal server. On Vercel, the platform calls the exported app.
+if (!process.env.VERCEL) {
+    connectDB()
+        .then(() => {
+            app.listen(PORT, () => {
+                console.log(`Server is running on port ${PORT}`)
+            })
+        })
+        .catch((error) => {
+            console.error(`MongoDB connection failed: ${error.message}`)
+            process.exit(1)
+        })
 }
-startServer()
+
+export default app

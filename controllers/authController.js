@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt'
 import User from '../models/User.js'
+import { cookieOptions, ACCESS_COOKIE_MAX_AGE, REFRESH_COOKIE_MAX_AGE } from '../utils/cookies.js'
 import ChefProfile from '../models/ChefProfile.js'
 import jwt from 'jsonwebtoken'
 import dotenv from 'dotenv'
@@ -53,19 +54,9 @@ export const login = async (req, res) => {
 
     const isProduction = process.env.NODE_ENV === 'production'
 
-    res.cookie('accessToken', accessToken, {
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: 'lax',
-        maxAge: 15 * 60 * 1000
-    })
+    res.cookie('accessToken', accessToken, { ...cookieOptions(), maxAge: ACCESS_COOKIE_MAX_AGE })
 
-    res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000
-    })
+    res.cookie('refreshToken', refreshToken, { ...cookieOptions(), maxAge: REFRESH_COOKIE_MAX_AGE })
 
 
     res.status(200).json({ status: 'success', message: 'Login successful', user: { id: user._id, name: user.name, email: user.email, role: user.role, city: user.city } })
@@ -98,12 +89,7 @@ export const refresh = async (req, res) => {
         throw error
     }
     const accessToken = jwt.sign({ id: user._id, role: user.role }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' })
-    res.cookie('accessToken', accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 15 * 60 * 1000
-    })
+    res.cookie('accessToken', accessToken, { ...cookieOptions(), maxAge: ACCESS_COOKIE_MAX_AGE })
     res.status(200).json({ status: 'success', message: 'Access token refreshed successfully' })
 }
 export const logout = async (req, res) => {
@@ -112,13 +98,8 @@ export const logout = async (req, res) => {
         const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex')
         await User.findOneAndUpdate({ refreshToken: hashedToken }, { refreshToken: null })
     }
-    const cookieOptions = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-    }
-    res.clearCookie('accessToken', cookieOptions)
-    res.clearCookie('refreshToken', cookieOptions)
+        res.clearCookie('accessToken', cookieOptions())
+    res.clearCookie('refreshToken', cookieOptions())
     res.status(200).json({ status: 'success', message: 'Logged out successfully' })
 }
 export const getMe = async (req, res) => {
