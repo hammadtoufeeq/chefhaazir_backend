@@ -2,6 +2,7 @@ import express from 'express'
 import { getMyProfile, updateMyProfile, acceptContract, verifyOtp, getChefs, getChefById } from '../controllers/chefController.js'
 import { protect, requireRole } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
+import { getChefAvailability } from '../controllers/bookingController.js'
 import { updateChefProfileSchema, acceptContractSchema, verifyOtpSchema } from '../zod-validator/chef_zod_schema.js'
 const router = express.Router()
 
@@ -13,5 +14,6 @@ router.post('/me/verify-otp', protect, requireRole('chef'), validate(verifyOtpSc
 // Public: anyone (including guests) can browse chefs
 router.get('/', getChefs)
 router.get('/:id', getChefById)
+router.get('/:id/availability', getChefAvailability)
 
 export default router
