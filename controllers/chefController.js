@@ -99,3 +99,28 @@ export const updateMyProfile = async (req, res) => {
         }
     })
 }
+export const acceptContract = async (req, res) => {
+    const profile = await ChefProfile.findOne({ user: req.user._id })
+    if (!profile) {
+        const error = new Error('Chef profile not found')
+        error.statusCode = 404
+        throw error
+    }
+
+    if (profile.contractAcceptedAt && profile.declarationAcceptedAt) {
+        const error = new Error('You have already accepted the contract')
+        error.statusCode = 400
+        throw error
+    }
+
+    const now = new Date()
+    profile.contractAcceptedAt = now
+    profile.declarationAcceptedAt = now
+    await profile.save()
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Contract and declaration accepted',
+        acceptedAt: now
+    })
+}

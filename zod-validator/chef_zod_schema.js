@@ -20,3 +20,7 @@ export const updateChefProfileSchema = z.object({
     ratePerSlot: z.number('Rate must be a number').int('Rate must be a whole number').min(500, 'Rate must be at least Rs 500').max(20000, 'Rate cannot be more than Rs 20,000').optional(),
     bio: z.string('Bio must be text').trim().max(300, 'Bio cannot be more than 300 characters').optional()
 }).refine((data) => Object.keys(data).length > 0, 'Please provide at least one field to update')
+export const acceptContractSchema = z.object({
+    acceptContract: z.literal(true, 'You must accept the contract'),
+    acceptDeclaration: z.literal(true, 'You must accept the legal declaration')
+})
