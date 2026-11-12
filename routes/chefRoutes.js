@@ -3,6 +3,7 @@ import { getMyProfile, updateMyProfile, acceptContract, verifyOtp, getChefs, get
 import { protect, requireRole } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
 import { getChefAvailability } from '../controllers/bookingController.js'
+import { getMyEarnings } from '../controllers/settlementController.js'
 import { updateChefProfileSchema, acceptContractSchema, verifyOtpSchema } from '../zod-validator/chef_zod_schema.js'
 const router = express.Router()
 
@@ -10,6 +11,7 @@ router.get('/me/profile', protect, requireRole('chef'), getMyProfile)
 router.patch('/me/profile', protect, requireRole('chef'), validate(updateChefProfileSchema), updateMyProfile)
 router.post('/me/contract', protect, requireRole('chef'), validate(acceptContractSchema), acceptContract)
 router.post('/me/verify-otp', protect, requireRole('chef'), validate(verifyOtpSchema), verifyOtp)
+router.get('/me/earnings', protect, requireRole('chef'), getMyEarnings)
 
 // Public: anyone (including guests) can browse chefs
 router.get('/', getChefs)

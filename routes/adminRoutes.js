@@ -1,5 +1,5 @@
 import express from 'express'
-import { getChefs, generateChefOtp, updateChefApproval, getStores, updateStoreApproval } from '../controllers/adminController.js'
+import { getChefs, generateChefOtp, updateChefApproval, getStores, updateStoreApproval, getChefPayments } from '../controllers/adminController.js'
 import { protect, requireRole } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
 import { chefApprovalSchema, storeApprovalSchema } from '../zod-validator/admin_zod_schema.js'
@@ -14,5 +14,7 @@ router.patch('/chefs/:id/approval', validate(chefApprovalSchema), updateChefAppr
 
 router.get('/stores', getStores)
 router.patch('/stores/:id/approval', validate(storeApprovalSchema), updateStoreApproval)
+
+router.get('/chef-payments', getChefPayments)
 
 export default router

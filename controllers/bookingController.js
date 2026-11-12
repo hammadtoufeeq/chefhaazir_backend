@@ -6,6 +6,7 @@ import GroceryItem from '../models/GroceryItem.js'
 import { getSettings } from '../models/Setting.js'
 import { getSlotTimes, todayInPakistan, addDays, SLOTS, HOUR, MINUTE } from '../utils/time.js'
 import { bookingListQuerySchema, availabilityQuerySchema } from '../zod-validator/booking_zod_schema.js'
+import { isChefPaymentBlocked } from '../utils/payments.js'
 
 const BOOKING_WINDOW_HOURS = 2      // request at least 2 hours before the slot
 const MAX_DAYS_AHEAD = 7            // book at most 7 days ahead
@@ -21,7 +22,7 @@ const httpError = (message, statusCode) => {
 const findBookableChef = async (chefProfileId) => {
     const profile = await ChefProfile.findOne({ _id: chefProfileId, approvalStatus: 'approved', phoneVerified: true })
         .populate('user', 'name status')
-    if (!profile || profile.user.status !== 'active') {
+    if (!profile || profile.user.status !== 'active' || await isChefPaymentBlocked(profile.user._id)) {
         throw httpError('Chef not found or not available for booking', 404)
     }
     return profile
@@ -277,6 +278,9 @@ const findChefPendingBooking = async (bookingId, chefId) => {
 }
 
 export const acceptBooking = async (req, res) => {
+    if (await isChefPaymentBlocked(req.user._id)) {
+        throw httpError('Your account is blocked for an overdue payment. Submit a settlement to accept new requests', 403)
+    }
     const booking = await findChefPendingBooking(req.params.id, req.user._id)
 
     booking.status = 'confirmed'

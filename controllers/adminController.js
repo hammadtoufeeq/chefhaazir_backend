@@ -2,6 +2,10 @@ import crypto from 'crypto'
 import mongoose from 'mongoose'
 import ChefProfile from '../models/ChefProfile.js'
 import GroceryStore from '../models/GroceryStore.js'
+import Booking from '../models/Booking.js'
+import Settlement from '../models/Settlement.js'
+import User from '../models/User.js'
+import { payableFilter, getPaymentBlockedChefIds } from '../utils/payments.js'
 
 export const getChefs = async (req, res) => {
     const { approvalStatus } = req.query
@@ -164,4 +168,58 @@ export const updateStoreApproval = async (req, res) => {
         message: `Store ${store.name} is now ${status}`,
         approvalStatus: store.approvalStatus
     })
+}
+
+// One card per chef: amount due, payment waiting for verification, last verified payment
+export const getChefPayments = async (req, res) => {
+    // Aggregation: group every unpaid payable booking by chef and add up what is owed
+    const due = await Booking.aggregate([
+        { $match: payableFilter() },
+        {
+            $group: {
+                _id: '$chef',
+                bookings: { $sum: 1 },
+                commission: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$commissionAmount', 0] } },
+                groceries: { $sum: '$grocerySubtotal' },
+                delivery: { $sum: '$deliveryFee' }
+            }
+        },
+        { $addFields: { totalDue: { $add: ['$commission', '$groceries', '$delivery'] } } }
+    ])
+
+    const awaiting = await Settlement.find({ status: 'submitted' }).select('chef amount method transactionId submittedAt')
+
+    const lastVerified = await Settlement.aggregate([
+        { $match: { status: 'verified' } },
+        { $sort: { verifiedAt: -1 } },
+        { $group: { _id: '$chef', amount: { $first: '$amount' }, verifiedAt: { $first: '$verifiedAt' } } }
+    ])
+
+    const blockedIds = (await getPaymentBlockedChefIds()).map(String)
+
+    // Every chef who owes money or has a payment waiting gets a card
+    const chefIds = [...new Set([...due.map((d) => String(d._id)), ...awaiting.map((a) => String(a.chef))])]
+    const chefs = await User.find({ _id: { $in: chefIds } }).select('name phone')
+
+    const cards = chefs.map((chef) => {
+        const id = String(chef._id)
+        const dueRow = due.find((d) => String(d._id) === id)
+        const waiting = awaiting.find((a) => String(a.chef) === id)
+        const last = lastVerified.find((l) => String(l._id) === id)
+        return {
+            chefId: chef._id,
+            name: chef.name,
+            phone: chef.phone,
+            totalDue: dueRow ? dueRow.totalDue : 0,
+            breakdown: dueRow
+                ? { bookings: dueRow.bookings, commission: dueRow.commission, groceries: dueRow.groceries, delivery: dueRow.delivery }
+                : { bookings: 0, commission: 0, groceries: 0, delivery: 0 },
+            awaitingVerification: waiting || null,
+            lastVerifiedPayment: last ? { amount: last.amount, verifiedAt: last.verifiedAt } : null,
+            paymentBlocked: blockedIds.includes(id)
+        }
+    })
+    cards.sort((a, b) => b.totalDue - a.totalDue)
+
+    res.status(200).json({ status: 'success', count: cards.length, chefs: cards })
 }

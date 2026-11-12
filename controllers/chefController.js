@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import mongoose from 'mongoose'
 import { chefListQuerySchema } from '../zod-validator/chef_zod_schema.js'
+import { getPaymentBlockedChefIds, isChefPaymentBlocked } from '../utils/payments.js'
 import ChefProfile from '../models/ChefProfile.js'
 import bcrypt from 'bcrypt'
 import User from '../models/User.js'
@@ -181,7 +182,9 @@ export const getChefs = async (req, res) => {
     const { search, city, cuisine, minPrice, maxPrice, page, limit } = result.data
 
     // Step 1: chef accounts that are active (and match the name search)
-    const userFilter = { role: 'chef', status: 'active' }
+    // Payment-blocked chefs are hidden until they submit a payment
+    const blockedIds = await getPaymentBlockedChefIds()
+    const userFilter = { role: 'chef', status: 'active', _id: { $nin: blockedIds } }
     if (search) {
         userFilter.name = { $regex: escapeRegex(search), $options: 'i' }
     }
@@ -240,7 +243,7 @@ export const getChefById = async (req, res) => {
 
     const profile = await ChefProfile.findOne({ _id: id, approvalStatus: 'approved', phoneVerified: true })
         .populate('user', 'name status')
-    if (!profile || profile.user.status !== 'active') {
+    if (!profile || profile.user.status !== 'active' || await isChefPaymentBlocked(profile.user._id)) {
         const error = new Error('Chef not found')
         error.statusCode = 404
         throw error
