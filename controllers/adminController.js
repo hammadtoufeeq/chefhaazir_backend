@@ -64,3 +64,43 @@ export const generateChefOtp = async (req, res) => {
         expiresAt
     })
 }
+
+export const updateChefApproval = async (req, res) => {
+    const { id } = req.params
+    const { status } = req.body
+
+    if (!mongoose.isValidObjectId(id)) {
+        const error = new Error('Invalid chef id')
+        error.statusCode = 400
+        throw error
+    }
+
+    const profile = await ChefProfile.findById(id).populate('user', 'name email')
+    if (!profile) {
+        const error = new Error('Chef profile not found')
+        error.statusCode = 404
+        throw error
+    }
+
+    if (status === 'approved') {
+        if (!profile.phoneVerified) {
+            const error = new Error('Cannot approve: chef has not verified their phone')
+            error.statusCode = 400
+            throw error
+        }
+        if (!profile.contractAcceptedAt || !profile.declarationAcceptedAt) {
+            const error = new Error('Cannot approve: chef has not accepted the contract and declaration')
+            error.statusCode = 400
+            throw error
+        }
+    }
+
+    profile.approvalStatus = status
+    await profile.save()
+
+    res.status(200).json({
+        status: 'success',
+        message: `Chef ${profile.user.name} is now ${status}`,
+        approvalStatus: profile.approvalStatus
+    })
+}
