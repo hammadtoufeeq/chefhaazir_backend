@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt'
 import User from '../models/User.js'
+import ChefProfile from '../models/ChefProfile.js'
 import jwt from 'jsonwebtoken'
 import dotenv from 'dotenv'
 import crypto from 'crypto'
@@ -122,4 +123,38 @@ export const logout = async (req, res) => {
 }
 export const getMe = async (req, res) => {
     res.status(200).json({ status: 'success', user: { id: req.user._id, name: req.user.name, email: req.user.email, role: req.user.role, city: req.user.city, address: req.user.address, phone: req.user.phone } })
+}
+
+export const updateMe = async (req, res) => {
+    const { name, phone, city, address } = req.body
+    const user = req.user
+
+    if ((city || address) && user.role !== 'user') {
+        const error = new Error(user.role === 'chef'
+            ? 'Chefs change city and address in their chef profile'
+            : 'City and address can only be changed here by customers')
+        error.statusCode = 400
+        throw error
+    }
+
+    // A chef's phone is verified by OTP, so changing it needs a new verification
+    let phoneNeedsVerification = false
+    if (phone && phone !== user.phone && user.role === 'chef') {
+        await ChefProfile.updateOne({ user: user._id }, { phoneVerified: false })
+        phoneNeedsVerification = true
+    }
+
+    if (name) user.name = name
+    if (phone) user.phone = phone
+    if (city) user.city = city
+    if (address) user.address = address
+    await user.save()
+
+    res.status(200).json({
+        status: 'success',
+        message: phoneNeedsVerification
+            ? 'Profile updated. Your new phone number must be verified again by OTP'
+            : 'Profile updated',
+        user: { id: user._id, name: user.name, email: user.email, role: user.role, city: user.city, address: user.address, phone: user.phone }
+    })
 }

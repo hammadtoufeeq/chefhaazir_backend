@@ -3,6 +3,7 @@ import mongoose from 'mongoose'
 import { chefListQuerySchema } from '../zod-validator/chef_zod_schema.js'
 import { getPaymentBlockedChefIds, isChefPaymentBlocked } from '../utils/payments.js'
 import ChefProfile from '../models/ChefProfile.js'
+import Booking from '../models/Booking.js'
 import bcrypt from 'bcrypt'
 import User from '../models/User.js'
 
@@ -86,6 +87,16 @@ export const updateMyProfile = async (req, res) => {
         const error = new Error('Chef profile not found')
         error.statusCode = 404
         throw error
+    }
+
+    // A chef cannot move city while a confirmed booking is still ahead in the old city
+    if (req.body.city && req.body.city !== profile.city) {
+        const upcoming = await Booking.exists({ chef: req.user._id, status: 'confirmed', slotEnd: { $gt: new Date() } })
+        if (upcoming) {
+            const error = new Error('You have upcoming confirmed bookings. Complete or cancel them before changing your city')
+            error.statusCode = 409
+            throw error
+        }
     }
 
     Object.assign(profile, req.body)
