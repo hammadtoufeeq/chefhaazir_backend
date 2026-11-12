@@ -76,3 +76,26 @@ export const getMyProfile = async (req, res) => {
         }
     })
 }
+export const updateMyProfile = async (req, res) => {
+    const profile = await ChefProfile.findOne({ user: req.user._id })
+    if (!profile) {
+        const error = new Error('Chef profile not found')
+        error.statusCode = 404
+        throw error
+    }
+
+    Object.assign(profile, req.body)
+    await profile.save()
+
+    res.status(200).json({
+        status: 'success',
+        message: 'Profile updated successfully',
+        profile: {
+            city: profile.city,
+            address: profile.address,
+            cuisines: profile.cuisines,
+            ratePerSlot: profile.ratePerSlot,
+            bio: profile.bio
+        }
+    })
+}
