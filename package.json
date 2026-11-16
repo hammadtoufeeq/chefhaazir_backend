@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "create-admin": "node scripts/createAdmin.js"
+    "create-admin": "node scripts/createAdmin.js",
+    "seed": "node scripts/seed.js"
   },
   "keywords": [],
   "author": "",

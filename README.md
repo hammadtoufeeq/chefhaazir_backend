@@ -13,6 +13,16 @@ npm run create-admin      # creates the first admin from ADMIN_* in .env (run on
 npm run dev               # http://localhost:5000
 ```
 
+### Sample data
+
+```bash
+npm run seed              # 16 approved chefs, 3 grocery stores (Lahore, Karachi, Islamabad) with 38 items each, 1 customer
+npm run seed -- --reset   # remove the sample data and add it again
+npm run seed -- --clear   # remove the sample data only
+```
+
+Sample accounts use `@seed.chefhaazir.pk` emails and the password `Chef12345`, e.g. `customer@seed.chefhaazir.pk`, `shabana.aunty@seed.chefhaazir.pk`, `lahore.store.manager@seed.chefhaazir.pk`. Real accounts are never touched.
+
 ## Roles
 
 | Role | How the account is made |
