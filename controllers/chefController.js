@@ -1,9 +1,9 @@
 import crypto from 'crypto'
 import mongoose from 'mongoose'
 import { chefListQuerySchema } from '../zod-validator/chef_zod_schema.js'
-import { getPaymentBlockedChefIds, isChefPaymentBlocked } from '../utils/payments.js'
+import { getPaymentBlockedChefIds, isChefPaymentBlocked, payableFilter } from '../utils/payments.js'
 import ChefProfile from '../models/ChefProfile.js'
-import Booking from '../models/Booking.js'
+import Booking, { refreshBookingStatuses } from '../models/Booking.js'
 import bcrypt from 'bcrypt'
 import User from '../models/User.js'
 import { todayInPakistan, addDays } from '../utils/time.js'
@@ -83,6 +83,56 @@ export const getMyProfile = async (req, res) => {
             otpExpiresAt: profile.otpExpiresAt,
             contractAccepted: !!profile.contractAcceptedAt,
             approvalStatus: profile.approvalStatus
+        }
+    })
+}
+
+export const getMyDashboardAnalytics = async (req, res) => {
+    const chefId = req.user._id
+    await refreshBookingStatuses({ chef: chefId })
+    const today = todayInPakistan()
+    const weekEnd = addDays(today, 7)
+    const now = new Date()
+    const [facets, paymentBlocked] = await Promise.all([
+        Booking.aggregate([
+            { $match: { chef: chefId } },
+            { $facet: {
+                statusCounts: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
+                schedule: [
+                    { $match: { status: { $in: ['pending', 'confirmed'] }, date: { $gte: today, $lte: weekEnd } } },
+                    { $group: { _id: '$date', count: { $sum: 1 } } },
+                    { $sort: { _id: 1 } }
+                ],
+                upcomingBookings: [
+                    { $match: { status: 'confirmed', slotStart: { $gt: now } } },
+                    { $sort: { slotStart: 1 } },
+                    { $limit: 3 },
+                    { $lookup: { from: 'users', localField: 'customer', foreignField: '_id', as: 'customerInfo' } },
+                    { $project: { date: 1, slot: 1, status: 1, note: 1, groceryStatus: 1, city: '$address.city', customerName: { $arrayElemAt: ['$customerInfo.name', 0] } } }
+                ],
+                payable: [
+                    { $match: payableFilter() },
+                    { $match: { chef: chefId } },
+                    { $group: { _id: null, payableBookings: { $sum: 1 }, totalDue: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, '$payableToPlatform', { $add: ['$grocerySubtotal', '$deliveryFee'] }] } } } }
+                ]
+            } }
+        ]),
+        isChefPaymentBlocked(chefId)
+    ])
+    const result = facets[0] || { statusCounts: [], schedule: [], upcomingBookings: [], payable: [] }
+    const statusCounts = Object.fromEntries(result.statusCounts.map(({ _id, count }) => [_id, count]))
+    res.status(200).json({
+        status: 'success',
+        analytics: {
+            statusCounts,
+            totalBookings: Object.values(statusCounts).reduce((sum, count) => sum + count, 0),
+            schedule: result.schedule,
+            upcomingBookings: result.upcomingBookings
+        },
+        earnings: {
+            totalDue: result.payable[0]?.totalDue || 0,
+            payableBookings: result.payable[0]?.payableBookings || 0,
+            paymentBlocked
         }
     })
 }

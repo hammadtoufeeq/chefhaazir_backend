@@ -1,5 +1,5 @@
 import express from 'express'
-import { getMyProfile, updateMyProfile, updateMyAvailability, acceptContract, verifyOtp, requestChefOtp, getChefs, getChefById } from '../controllers/chefController.js'
+import { getMyProfile, getMyDashboardAnalytics, updateMyProfile, updateMyAvailability, acceptContract, verifyOtp, requestChefOtp, getChefs, getChefById } from '../controllers/chefController.js'
 import { protect, requireRole } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
 import { getChefAvailability } from '../controllers/bookingController.js'
@@ -7,6 +7,7 @@ import { getMyEarnings } from '../controllers/settlementController.js'
 import { updateChefProfileSchema, chefAvailabilityUpdateSchema, acceptContractSchema, verifyOtpSchema } from '../zod-validator/chef_zod_schema.js'
 const router = express.Router()
 
+router.get('/me/dashboard', protect, requireRole('chef'), getMyDashboardAnalytics)
 router.get('/me/profile', protect, requireRole('chef'), getMyProfile)
 router.patch('/me/profile', protect, requireRole('chef'), validate(updateChefProfileSchema), updateMyProfile)
 router.patch('/me/availability', protect, requireRole('chef'), validate(chefAvailabilityUpdateSchema), updateMyAvailability)
