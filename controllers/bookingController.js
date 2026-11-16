@@ -11,6 +11,7 @@ import { isChefPaymentBlocked } from '../utils/payments.js'
 const BOOKING_WINDOW_HOURS = 2      // request at least 2 hours before the slot
 const MAX_DAYS_AHEAD = 7            // book at most 7 days ahead
 const RESPONSE_MINUTES = 15         // chef must answer within 15 minutes
+const CANCEL_DEADLINE_MINUTES = 90  // cancellation closes 1.5 hours before the slot
 
 const httpError = (message, statusCode) => {
     const error = new Error(message)
@@ -180,10 +181,20 @@ export const getMyBookings = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
+    const cancellationWindowMs = CANCEL_DEADLINE_MINUTES * MINUTE
+    const customerBookings = bookings.map((booking) => {
+        const cancellationDeadline = new Date(booking.slotStart.getTime() - cancellationWindowMs)
+        return {
+            ...booking.toObject(),
+            cancellationAllowed: ['pending', 'confirmed'].includes(booking.status) && booking.slotStart.getTime() - Date.now() >= cancellationWindowMs,
+            cancellationDeadline,
+            cancellationWindowMinutes: CANCEL_DEADLINE_MINUTES
+        }
+    })
 
     res.status(200).json({
         status: 'success',
-        bookings,
+        bookings: customerBookings,
         pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
     })
 }
@@ -383,8 +394,6 @@ export const getChefAvailability = async (req, res) => {
 }
 
 // ---------- Cancel, complete, grocery return ----------
-
-const CANCEL_DEADLINE_MINUTES = 90  // user and chef can cancel until 1.5 hours before the slot
 
 export const cancelBooking = async (req, res) => {
     const { id } = req.params
