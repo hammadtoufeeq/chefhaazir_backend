@@ -6,6 +6,7 @@ import ChefProfile from '../models/ChefProfile.js'
 import Booking from '../models/Booking.js'
 import bcrypt from 'bcrypt'
 import User from '../models/User.js'
+import { todayInPakistan, addDays } from '../utils/time.js'
 
 export const registerChef = async (req, res) => {
     const { name, email, password, phone, city, address, cuisines, ratePerSlot, bio } = req.body
@@ -151,6 +152,40 @@ export const updateMyProfile = async (req, res) => {
             bio: profile.bio
         }
     })
+}
+
+export const updateMyAvailability = async (req, res) => {
+    const { date, unavailableSlots } = req.body
+    if (date < todayInPakistan() || date > addDays(todayInPakistan(), 7)) {
+        const error = new Error('Availability can be changed for today and the next 7 days')
+        error.statusCode = 400
+        throw error
+    }
+    const existingBooking = await Booking.findOne({
+        chef: req.user._id,
+        date,
+        slot: { $in: unavailableSlots },
+        $or: [
+            { status: 'confirmed' },
+            { status: 'pending', expiresAt: { $gt: new Date() } }
+        ]
+    }).select('slot status')
+    if (existingBooking) {
+        const error = new Error(`You already have a ${existingBooking.status} booking for ${existingBooking.slot}. Resolve it before marking that slot unavailable.`)
+        error.statusCode = 409
+        throw error
+    }
+
+    const profile = await ChefProfile.findOne({ user: req.user._id })
+    if (!profile) {
+        const error = new Error('Chef profile not found')
+        error.statusCode = 404
+        throw error
+    }
+    profile.unavailableSlots = profile.unavailableSlots.filter((entry) => entry.date !== date)
+    profile.unavailableSlots.push(...unavailableSlots.map((slot) => ({ date, slot })))
+    await profile.save()
+    res.status(200).json({ status: 'success', message: 'Availability saved', date, unavailableSlots })
 }
 export const acceptContract = async (req, res) => {
     const profile = await ChefProfile.findOne({ user: req.user._id })

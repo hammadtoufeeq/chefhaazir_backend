@@ -33,6 +33,13 @@ const chefProfileSchema = new mongoose.Schema(
             trim: true,
             maxlength: 300
         },
+        unavailableSlots: {
+            type: [{
+                date: { type: String, required: true },
+                slot: { type: String, enum: ['08-10', '10-12', '12-14', '14-16', '16-18', '18-20', '20-22'], required: true }
+            }],
+            default: []
+        },
         phoneVerified: {
             type: Boolean,
             default: false

@@ -31,6 +31,14 @@ export const verifyOtpSchema = z.object({
     otp: z.string('OTP is required').trim().regex(/^\d{6}$/, 'OTP must be exactly 6 digits')
 })
 
+export const chefAvailabilityUpdateSchema = z.object({
+    date: z.string('Date is required').regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be like YYYY-MM-DD').refine((value) => {
+        const date = new Date(`${value}T00:00:00Z`)
+        return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+    }, 'Please provide a real date'),
+    unavailableSlots: z.array(z.enum(['08-10', '10-12', '12-14', '14-16', '16-18', '18-20', '20-22']), 'Unavailable slots must be a list').max(7).refine((slots) => new Set(slots).size === slots.length, 'Unavailable slots must be unique')
+})
+
 export const chefListQuerySchema = z.object({
     search: z.string().trim().max(50, 'Search cannot be more than 50 characters').optional(),
     city: z.enum(cities, 'Please select a valid city').optional(),

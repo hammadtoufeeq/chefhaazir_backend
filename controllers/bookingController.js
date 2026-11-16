@@ -46,6 +46,10 @@ export const createBooking = async (req, res) => {
         throw httpError(`You can book at most ${MAX_DAYS_AHEAD} days ahead`, 400)
     }
 
+    if (chefProfile.unavailableSlots.some((entry) => entry.date === date && entry.slot === slot)) {
+        throw httpError('The chef is unavailable for this date and time. Please choose another slot', 409)
+    }
+
     // Slot already taken by a confirmed booking?
     const locked = await Booking.findOne({ chef: chefUserId, date, slot, slotLocked: true })
     if (locked) {
@@ -337,6 +341,7 @@ export const getChefAvailability = async (req, res) => {
     const { date } = result.data
 
     const chefProfile = await findBookableChef(id)
+    const unavailableSlots = new Set(chefProfile.unavailableSlots.filter((entry) => entry.date === date).map((entry) => entry.slot))
     const lockedBookings = await Booking.find({ chef: chefProfile.user._id, date, slotLocked: true }).select('slot')
     const lockedSlots = lockedBookings.map((b) => b.slot)
     const lastBookableDate = addDays(todayInPakistan(), MAX_DAYS_AHEAD)
@@ -344,7 +349,8 @@ export const getChefAvailability = async (req, res) => {
     const slots = SLOTS.map((slot) => {
         const { slotStart } = getSlotTimes(date, slot)
         let status = 'available'
-        if (lockedSlots.includes(slot)) status = 'booked'
+        if (unavailableSlots.has(slot)) status = 'chef_unavailable'
+        else if (lockedSlots.includes(slot)) status = 'booked'
         else if (slotStart.getTime() - Date.now() < BOOKING_WINDOW_HOURS * HOUR) status = 'too_late'
         else if (date > lastBookableDate) status = 'too_far'
         return { slot, status }
