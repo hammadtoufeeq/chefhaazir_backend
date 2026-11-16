@@ -188,6 +188,29 @@ export const getMyBookings = async (req, res) => {
     })
 }
 
+export const getMyBookingNotifications = async (req, res) => {
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const bookings = await Booking.find({
+        customer: req.user._id,
+        status: { $in: ['confirmed', 'completed', 'cancelled', 'disputed'] },
+        respondedAt: { $gte: since }
+    })
+        .populate('chef', 'name')
+        .select('date slot status respondedAt chef')
+        .sort({ respondedAt: -1 })
+        .limit(10)
+
+    res.status(200).json({ status: 'success', notifications: bookings.map((booking) => ({
+        bookingId: booking._id,
+        type: 'booking_accepted',
+        chefName: booking.chef?.name || 'Your chef',
+        date: booking.date,
+        slot: booking.slot,
+        respondedAt: booking.respondedAt,
+        bookingStatus: booking.status
+    })) })
+}
+
 export const getChefBookings = async (req, res) => {
     const { status, page, limit } = parseListQuery(req.query)
     await refreshBookingStatuses({ chef: req.user._id })

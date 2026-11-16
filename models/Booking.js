@@ -79,6 +79,7 @@ bookingSchema.index(
 )
 bookingSchema.index({ chef: 1, status: 1 })
 bookingSchema.index({ customer: 1, createdAt: -1 })
+bookingSchema.index({ customer: 1, status: 1, respondedAt: -1 })
 
 const Booking = mongoose.model('Booking', bookingSchema)
 

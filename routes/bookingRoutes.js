@@ -1,5 +1,5 @@
 import express from 'express'
-import { createBooking, getMyBookings, getChefBookings, getBookingById, acceptBooking, rejectBooking, cancelBooking, completeBooking, requestGroceryReturn } from '../controllers/bookingController.js'
+import { createBooking, getMyBookings, getMyBookingNotifications, getChefBookings, getBookingById, acceptBooking, rejectBooking, cancelBooking, completeBooking, requestGroceryReturn } from '../controllers/bookingController.js'
 import { protect, requireRole } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
 import { createBookingSchema, cancelBookingSchema } from '../zod-validator/booking_zod_schema.js'
@@ -7,6 +7,7 @@ import { createBookingSchema, cancelBookingSchema } from '../zod-validator/booki
 const router = express.Router()
 
 router.post('/', protect, requireRole('user'), validate(createBookingSchema), createBooking)
+router.get('/notifications', protect, requireRole('user'), getMyBookingNotifications)
 router.get('/mine', protect, requireRole('user'), getMyBookings)
 router.get('/chef', protect, requireRole('chef'), getChefBookings)
 router.get('/:id', protect, getBookingById)
