@@ -1,6 +1,5 @@
 import mongoose from 'mongoose'
 import cities from '../constants/cities.js'
-import cuisines from '../constants/cuisines.js'
 
 const chefProfileSchema = new mongoose.Schema(
     {
@@ -21,9 +20,9 @@ const chefProfileSchema = new mongoose.Schema(
             required: true
         },
         cuisines: {
-            type: [String],
-            enum: cuisines,
-            required: true
+            type: [{ type: String, trim: true, maxlength: 40 }],
+            required: true,
+            validate: { validator: (values) => values.length >= 1 && values.length <= 5, message: 'Select between 1 and 5 cuisines' }
         },
         ratePerSlot: {
             type: Number,
