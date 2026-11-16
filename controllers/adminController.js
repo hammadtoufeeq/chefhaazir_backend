@@ -60,6 +60,8 @@ export const generateChefOtp = async (req, res) => {
 
     profile.otpHash = crypto.createHash('sha256').update(otp).digest('hex')
     profile.otpExpiresAt = expiresAt
+    profile.otpRequestedAt = undefined
+    profile.otpGeneratedAt = new Date()
     await profile.save()
 
     res.status(200).json({

@@ -57,7 +57,7 @@ export const registerChef = async (req, res) => {
     })
 }
 export const getMyProfile = async (req, res) => {
-    const profile = await ChefProfile.findOne({ user: req.user._id })
+    const profile = await ChefProfile.findOne({ user: req.user._id }).select('+otpExpiresAt')
     if (!profile) {
         const error = new Error('Chef profile not found')
         error.statusCode = 404
@@ -77,10 +77,47 @@ export const getMyProfile = async (req, res) => {
             ratePerSlot: profile.ratePerSlot,
             bio: profile.bio,
             phoneVerified: profile.phoneVerified,
+            otpRequestedAt: profile.otpRequestedAt,
+            otpGeneratedAt: profile.otpGeneratedAt,
+            otpExpiresAt: profile.otpExpiresAt,
             contractAccepted: !!profile.contractAcceptedAt,
             approvalStatus: profile.approvalStatus
         }
     })
+}
+
+export const requestChefOtp = async (req, res) => {
+    const profile = await ChefProfile.findOne({ user: req.user._id }).select('+otpHash +otpExpiresAt')
+    if (!profile) {
+        const error = new Error('Chef profile not found')
+        error.statusCode = 404
+        throw error
+    }
+    if (profile.phoneVerified) {
+        const error = new Error('Your phone is already verified')
+        error.statusCode = 400
+        throw error
+    }
+
+    const now = new Date()
+    if (profile.otpExpiresAt && profile.otpExpiresAt > now) {
+        const error = new Error('A verification code is already active. Enter the code sent to your phone')
+        error.statusCode = 409
+        throw error
+    }
+    if (profile.otpRequestedAt && now.getTime() - profile.otpRequestedAt.getTime() < 5 * 60 * 1000) {
+        const error = new Error('Your OTP request is already with the admin team')
+        error.statusCode = 409
+        throw error
+    }
+
+    profile.otpRequestedAt = now
+    profile.otpGeneratedAt = undefined
+    profile.otpHash = undefined
+    profile.otpExpiresAt = undefined
+    await profile.save()
+
+    res.status(200).json({ status: 'success', message: 'OTP request sent to the admin team', requestedAt: now })
 }
 export const updateMyProfile = async (req, res) => {
     const profile = await ChefProfile.findOne({ user: req.user._id })
@@ -177,6 +214,8 @@ export const verifyOtp = async (req, res) => {
     profile.phoneVerified = true
     profile.otpHash = undefined
     profile.otpExpiresAt = undefined
+    profile.otpRequestedAt = undefined
+    profile.otpGeneratedAt = undefined
     await profile.save()
 
     res.status(200).json({ status: 'success', message: 'Phone verified successfully' })

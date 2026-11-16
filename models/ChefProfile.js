@@ -45,6 +45,12 @@ const chefProfileSchema = new mongoose.Schema(
             type: Date,
             select: false
         },
+        otpRequestedAt: {
+            type: Date
+        },
+        otpGeneratedAt: {
+            type: Date
+        },
         contractAcceptedAt: {
             type: Date
         },

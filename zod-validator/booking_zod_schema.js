@@ -7,7 +7,7 @@ export const createBookingSchema = z.object({
     chefId: objectId('A valid chef id is required'),
     date: z.string('Date is required').regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be like YYYY-MM-DD').refine(isValidDate, 'Please provide a real date'),
     slot: z.enum(SLOTS, 'Please select a valid slot'),
-    note: z.string('Note must be text').trim().max(500, 'Note cannot be more than 500 characters').optional(),
+    note: z.string('Please describe what you would like the chef to cook').trim().min(10, 'Please describe the dishes you expect (at least 10 characters)').max(500, 'Note cannot be more than 500 characters'),
     street: z.string('Address must be text').trim().min(10, 'Address must be at least 10 characters').max(200, 'Address cannot be more than 200 characters').optional(),
     groceryItems: z.array(
         z.object({
