@@ -6,6 +6,7 @@ import ChefProfile from '../models/ChefProfile.js'
 import Booking from '../models/Booking.js'
 import bcrypt from 'bcrypt'
 import User from '../models/User.js'
+import { todayInPakistan, addDays } from '../utils/time.js'
 
 export const registerChef = async (req, res) => {
     const { name, email, password, phone, city, address, cuisines, ratePerSlot, bio } = req.body
@@ -57,7 +58,7 @@ export const registerChef = async (req, res) => {
     })
 }
 export const getMyProfile = async (req, res) => {
-    const profile = await ChefProfile.findOne({ user: req.user._id })
+    const profile = await ChefProfile.findOne({ user: req.user._id }).select('+otpExpiresAt')
     if (!profile) {
         const error = new Error('Chef profile not found')
         error.statusCode = 404
@@ -67,6 +68,7 @@ export const getMyProfile = async (req, res) => {
     res.status(200).json({
         status: 'success',
         profile: {
+            id: profile._id,
             name: req.user.name,
             email: req.user.email,
             phone: req.user.phone,
@@ -76,10 +78,47 @@ export const getMyProfile = async (req, res) => {
             ratePerSlot: profile.ratePerSlot,
             bio: profile.bio,
             phoneVerified: profile.phoneVerified,
+            otpRequestedAt: profile.otpRequestedAt,
+            otpGeneratedAt: profile.otpGeneratedAt,
+            otpExpiresAt: profile.otpExpiresAt,
             contractAccepted: !!profile.contractAcceptedAt,
             approvalStatus: profile.approvalStatus
         }
     })
+}
+
+export const requestChefOtp = async (req, res) => {
+    const profile = await ChefProfile.findOne({ user: req.user._id }).select('+otpHash +otpExpiresAt')
+    if (!profile) {
+        const error = new Error('Chef profile not found')
+        error.statusCode = 404
+        throw error
+    }
+    if (profile.phoneVerified) {
+        const error = new Error('Your phone is already verified')
+        error.statusCode = 400
+        throw error
+    }
+
+    const now = new Date()
+    if (profile.otpExpiresAt && profile.otpExpiresAt > now) {
+        const error = new Error('A verification code is already active. Enter the code sent to your phone')
+        error.statusCode = 409
+        throw error
+    }
+    if (profile.otpRequestedAt && now.getTime() - profile.otpRequestedAt.getTime() < 5 * 60 * 1000) {
+        const error = new Error('Your OTP request is already with the admin team')
+        error.statusCode = 409
+        throw error
+    }
+
+    profile.otpRequestedAt = now
+    profile.otpGeneratedAt = undefined
+    profile.otpHash = undefined
+    profile.otpExpiresAt = undefined
+    await profile.save()
+
+    res.status(200).json({ status: 'success', message: 'OTP request sent to the admin team', requestedAt: now })
 }
 export const updateMyProfile = async (req, res) => {
     const profile = await ChefProfile.findOne({ user: req.user._id })
@@ -113,6 +152,40 @@ export const updateMyProfile = async (req, res) => {
             bio: profile.bio
         }
     })
+}
+
+export const updateMyAvailability = async (req, res) => {
+    const { date, unavailableSlots } = req.body
+    if (date < todayInPakistan() || date > addDays(todayInPakistan(), 7)) {
+        const error = new Error('Availability can be changed for today and the next 7 days')
+        error.statusCode = 400
+        throw error
+    }
+    const existingBooking = await Booking.findOne({
+        chef: req.user._id,
+        date,
+        slot: { $in: unavailableSlots },
+        $or: [
+            { status: 'confirmed' },
+            { status: 'pending', expiresAt: { $gt: new Date() } }
+        ]
+    }).select('slot status')
+    if (existingBooking) {
+        const error = new Error(`You already have a ${existingBooking.status} booking for ${existingBooking.slot}. Resolve it before marking that slot unavailable.`)
+        error.statusCode = 409
+        throw error
+    }
+
+    const profile = await ChefProfile.findOne({ user: req.user._id })
+    if (!profile) {
+        const error = new Error('Chef profile not found')
+        error.statusCode = 404
+        throw error
+    }
+    profile.unavailableSlots = profile.unavailableSlots.filter((entry) => entry.date !== date)
+    profile.unavailableSlots.push(...unavailableSlots.map((slot) => ({ date, slot })))
+    await profile.save()
+    res.status(200).json({ status: 'success', message: 'Availability saved', date, unavailableSlots })
 }
 export const acceptContract = async (req, res) => {
     const profile = await ChefProfile.findOne({ user: req.user._id })
@@ -176,6 +249,8 @@ export const verifyOtp = async (req, res) => {
     profile.phoneVerified = true
     profile.otpHash = undefined
     profile.otpExpiresAt = undefined
+    profile.otpRequestedAt = undefined
+    profile.otpGeneratedAt = undefined
     await profile.save()
 
     res.status(200).json({ status: 'success', message: 'Phone verified successfully' })

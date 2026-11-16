@@ -1,14 +1,16 @@
 import express from 'express'
-import { getMyProfile, updateMyProfile, acceptContract, verifyOtp, getChefs, getChefById } from '../controllers/chefController.js'
+import { getMyProfile, updateMyProfile, updateMyAvailability, acceptContract, verifyOtp, requestChefOtp, getChefs, getChefById } from '../controllers/chefController.js'
 import { protect, requireRole } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
 import { getChefAvailability } from '../controllers/bookingController.js'
 import { getMyEarnings } from '../controllers/settlementController.js'
-import { updateChefProfileSchema, acceptContractSchema, verifyOtpSchema } from '../zod-validator/chef_zod_schema.js'
+import { updateChefProfileSchema, chefAvailabilityUpdateSchema, acceptContractSchema, verifyOtpSchema } from '../zod-validator/chef_zod_schema.js'
 const router = express.Router()
 
 router.get('/me/profile', protect, requireRole('chef'), getMyProfile)
 router.patch('/me/profile', protect, requireRole('chef'), validate(updateChefProfileSchema), updateMyProfile)
+router.patch('/me/availability', protect, requireRole('chef'), validate(chefAvailabilityUpdateSchema), updateMyAvailability)
+router.post('/me/request-otp', protect, requireRole('chef'), requestChefOtp)
 router.post('/me/contract', protect, requireRole('chef'), validate(acceptContractSchema), acceptContract)
 router.post('/me/verify-otp', protect, requireRole('chef'), validate(verifyOtpSchema), verifyOtp)
 router.get('/me/earnings', protect, requireRole('chef'), getMyEarnings)
