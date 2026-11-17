@@ -53,6 +53,30 @@ export const getAdminStats = async (req, res) => {
     )
     totals.totalRevenue = totals.commission + totals.grocerySales + totals.deliveryFees
 
+    // Split completed-order revenue into verified collections and balances
+    // still awaiting settlement. This changes immediately when a payment is
+    // verified because every settlement is linked to its bookings.
+    const collectedRows = await Booking.aggregate([
+        { $match: { status: 'completed', settlement: { $ne: null } } },
+        { $lookup: { from: 'settlements', localField: 'settlement', foreignField: '_id', as: 'settlementRecord' } },
+        { $unwind: '$settlementRecord' },
+        { $match: { 'settlementRecord.status': 'verified' } },
+        { $group: {
+            _id: null,
+            bookings: { $sum: 1 },
+            commission: { $sum: '$commissionAmount' },
+            grocerySales: { $sum: '$grocerySubtotal' },
+            deliveryFees: { $sum: '$deliveryFee' }
+        } }
+    ])
+    const collected = collectedRows[0] || { bookings: 0, commission: 0, grocerySales: 0, deliveryFees: 0 }
+    totals.settledBookings = collected.bookings
+    totals.collectedCommission = collected.commission
+    totals.collectedGrocerySales = collected.grocerySales
+    totals.collectedDeliveryFees = collected.deliveryFees
+    totals.unsettledCommission = Math.max(0, totals.commission - collected.commission)
+    totals.unsettledGrocerySales = Math.max(0, totals.grocerySales - collected.grocerySales)
+
     // 2. Top 5 chefs by completed bookings
     const topChefs = await Booking.aggregate([
         { $match: { status: 'completed' } },

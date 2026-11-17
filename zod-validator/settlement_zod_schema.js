@@ -1,9 +1,9 @@
 import { z } from 'zod'
 
 export const createSettlementSchema = z.object({
-    method: z.enum(['cash', 'jazzcash', 'easypaisa', 'bank'], 'Method must be cash, jazzcash, easypaisa or bank'),
-    transactionId: z.string('Transaction ID must be text').trim().min(6, 'Transaction ID must be at least 6 characters').max(30, 'Transaction ID cannot be more than 30 characters').optional()
-}).refine((data) => data.method === 'cash' || !!data.transactionId, 'Transaction ID is required unless you pay in cash')
+    method: z.literal('sadapay', 'Settlement must be submitted as an online SadaPay transfer'),
+    transactionId: z.string('Transaction ID must be text').trim().min(6, 'Transaction ID is required and must be at least 6 characters').max(30, 'Transaction ID cannot be more than 30 characters')
+})
 
 export const rejectSettlementSchema = z.object({
     reason: z.string('Reason is required').trim().min(3, 'Reason must be at least 3 characters').max(300, 'Reason cannot be more than 300 characters')

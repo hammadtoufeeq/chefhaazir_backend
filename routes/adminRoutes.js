@@ -1,5 +1,5 @@
 import express from 'express'
-import { getChefs, generateChefOtp, updateChefApproval, getStores, updateStoreApproval, getChefPayments, getUsers, updateUserStatus } from '../controllers/adminController.js'
+import { getChefs, generateChefOtp, updateChefApproval, getStores, updateStoreApproval, getChefPayments, getUsers, getAdminBookings, updateUserStatus } from '../controllers/adminController.js'
 import { protect, requireRole } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
 import { chefApprovalSchema, storeApprovalSchema, settingsSchema } from '../zod-validator/admin_zod_schema.js'
@@ -18,6 +18,7 @@ router.get('/stores', getStores)
 router.patch('/stores/:id/approval', validate(storeApprovalSchema), updateStoreApproval)
 
 router.get('/chef-payments', getChefPayments)
+router.get('/bookings', getAdminBookings)
 
 router.get('/users', getUsers)
 router.patch('/users/:id/status', validate(userStatusSchema), updateUserStatus)

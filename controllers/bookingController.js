@@ -469,7 +469,18 @@ export const completeBooking = async (req, res) => {
     booking.completedAt = new Date()
     await booking.save()
 
-    res.status(200).json({ status: 'success', message: 'Booking marked as completed' })
+    res.status(200).json({
+        status: 'success',
+        message: 'Booking marked as completed',
+        finances: {
+            chefFee: booking.chefRate,
+            commission: booking.commissionAmount,
+            groceries: booking.grocerySubtotal,
+            delivery: booking.deliveryFee,
+            totalDueToPlatform: booking.payableToPlatform,
+            chefKeeps: booking.chefRate - booking.commissionAmount
+        }
+    })
 }
 
 export const requestGroceryReturn = async (req, res) => {

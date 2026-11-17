@@ -1,5 +1,5 @@
 import mongoose from 'mongoose'
-import Booking from '../models/Booking.js'
+import Booking, { refreshBookingStatuses } from '../models/Booking.js'
 import Settlement from '../models/Settlement.js'
 import { payableFilter, amountOwed, isChefPaymentBlocked } from '../utils/payments.js'
 import { settlementListQuerySchema } from '../zod-validator/settlement_zod_schema.js'
@@ -14,6 +14,9 @@ const httpError = (message, statusCode) => {
 
 export const getMyEarnings = async (req, res) => {
     const chefId = req.user._id
+    // This also applies the existing 24-hour automatic completion rule so
+    // those bookings enter the payable balance as soon as they auto-complete.
+    await refreshBookingStatuses({ chef: chefId })
 
     const payable = await Booking.find(payableFilter({ chef: chefId }))
         .select('date slot status chefRate grocerySubtotal deliveryFee commissionAmount payableToPlatform totalFromCustomer groceryStatus')
@@ -23,17 +26,23 @@ export const getMyEarnings = async (req, res) => {
     const awaiting = await Settlement.findOne({ chef: chefId, status: 'submitted' }).select('amount method transactionId submittedAt')
     const blocked = await isChefPaymentBlocked(chefId)
 
-    // Recent completed bookings with their full breakdown
-    const recent = await Booking.find({ chef: chefId, status: 'completed' })
-        .select('date slot chefRate grocerySubtotal deliveryFee totalFromCustomer commissionAmount payableToPlatform settlement')
+    // Completed, unpaid bookings are visible immediately, even while the
+    // customer's 24-hour issue window is still open.
+    const recent = await Booking.find({ chef: chefId, status: 'completed', settlement: null })
+        .select('date slot chefRate grocerySubtotal deliveryFee totalFromCustomer commissionRate commissionAmount payableToPlatform settlement')
         .sort({ slotStart: -1 })
-        .limit(20)
+        .limit(100)
+    const commissionUnderReview = recent.reduce((sum, b) => sum + (b.commissionAmount || 0), 0)
+    const totalCompletedPayable = recent.reduce((sum, b) => sum + (b.payableToPlatform || 0), 0)
 
     res.status(200).json({
         status: 'success',
         summary: {
             totalDue,
             payableBookings: payable.length,
+            completedUnsettledBookings: recent.length,
+            completedUnsettledTotal: totalCompletedPayable,
+            commissionUnderReview,
             awaitingVerification: awaiting,
             paymentBlocked: blocked
         },
@@ -49,6 +58,7 @@ export const getMyEarnings = async (req, res) => {
             commission: b.commissionAmount,
             payToPlatform: b.payableToPlatform,
             chefKeeps: b.chefRate - b.commissionAmount,
+            commissionRate: b.commissionRate,
             settled: !!b.settlement
         }))
     })

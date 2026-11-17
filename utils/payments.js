@@ -8,13 +8,18 @@ const ISSUE_WINDOW = DAY   // customers can report an issue until 24 hours after
 // - completed bookings: commission + groceries + delivery
 // - cancelled bookings whose groceries reached the chef and were not returned:
 //   groceries + delivery
-// A booking becomes payable only after its issue window closes.
+// Completed bookings become payable as soon as they are marked completed
+// (manually or by the automatic completion refresh). Grocery returns on
+// cancelled bookings remain protected by the customer's 24-hour issue window.
 export const payableFilter = (extra = {}) => ({
     settlement: null,
-    slotEnd: { $lte: new Date(Date.now() - ISSUE_WINDOW) },
     $or: [
         { status: 'completed' },
-        { status: 'cancelled', groceryStatus: { $in: ['delivered_to_chef', 'return_requested'] } }
+        {
+            status: 'cancelled',
+            groceryStatus: { $in: ['delivered_to_chef', 'return_requested'] },
+            slotEnd: { $lte: new Date(Date.now() - ISSUE_WINDOW) }
+        }
     ],
     ...extra
 })

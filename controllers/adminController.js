@@ -274,6 +274,33 @@ export const getUsers = async (req, res) => {
     })
 }
 
+// Paginated booking ledger for the admin operations portal.
+export const getAdminBookings = async (req, res) => {
+    const allowedStatuses = ['pending', 'confirmed', 'completed', 'cancelled', 'rejected', 'expired', 'disputed']
+    const status = req.query.status
+    const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1)
+    const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 30))
+    if (status && !allowedStatuses.includes(status)) {
+        const error = new Error('Invalid booking status')
+        error.statusCode = 400
+        throw error
+    }
+    const filter = status ? { status } : {}
+    const total = await Booking.countDocuments(filter)
+    const bookings = await Booking.find(filter)
+        .populate('customer', 'name email phone')
+        .populate('chef', 'name email phone')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+
+    res.status(200).json({
+        status: 'success',
+        bookings,
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
+    })
+}
+
 // Suspend or reactivate an account
 export const updateUserStatus = async (req, res) => {
     const { id } = req.params

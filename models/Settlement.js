@@ -6,7 +6,9 @@ const settlementSchema = new mongoose.Schema(
         chef: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         bookings: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Booking' }],
         amount: { type: Number, required: true, min: 1 },
-        method: { type: String, enum: ['cash', 'jazzcash', 'easypaisa', 'bank'], required: true },
+        // Keep legacy values so existing settlement records remain readable;
+        // new settlement requests are restricted to SadaPay by validation.
+        method: { type: String, enum: ['cash', 'jazzcash', 'easypaisa', 'bank', 'sadapay'], required: true },
         transactionId: { type: String, trim: true },
         status: { type: String, enum: ['submitted', 'verified', 'rejected'], default: 'submitted' },
         submittedAt: { type: Date, default: Date.now },
