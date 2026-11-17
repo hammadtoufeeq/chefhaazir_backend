@@ -1,8 +1,8 @@
 import express from 'express'
-import { getChefs, generateChefOtp, verifyChefOtpAsAdmin, deleteChefProfile, updateChefApproval, getStores, deleteGroceryStore, updateStoreApproval, getChefPayments, getUsers, getAdminBookings, updateUserStatus } from '../controllers/adminController.js'
+import { getChefs, generateChefOtp, verifyChefOtpAsAdmin, deleteChefProfile, updateChefApproval, getStores, deleteGroceryStore, updateStoreApproval, getGroceryOwners, createGroceryOwner, updateGroceryOwner, deleteGroceryOwner, getChefPayments, getUsers, getAdminBookings, updateUserStatus } from '../controllers/adminController.js'
 import { protect, requireRole } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
-import { adminOtpVerifySchema, chefApprovalSchema, storeApprovalSchema, settingsSchema } from '../zod-validator/admin_zod_schema.js'
+import { adminOtpVerifySchema, adminGroceryOwnerSchema, adminGroceryOwnerUpdateSchema, chefApprovalSchema, storeApprovalSchema, settingsSchema } from '../zod-validator/admin_zod_schema.js'
 import { getAdminStats, getSettingsHandler, updateSettings } from '../controllers/statsController.js'
 import { userStatusSchema } from '../zod-validator/issue_zod_schema.js'
 
@@ -19,6 +19,11 @@ router.patch('/chefs/:id/approval', validate(chefApprovalSchema), updateChefAppr
 router.get('/stores', getStores)
 router.delete('/stores/:id', deleteGroceryStore)
 router.patch('/stores/:id/approval', validate(storeApprovalSchema), updateStoreApproval)
+
+router.get('/grocery-owners', getGroceryOwners)
+router.post('/grocery-owners', validate(adminGroceryOwnerSchema), createGroceryOwner)
+router.patch('/grocery-owners/:id', validate(adminGroceryOwnerUpdateSchema), updateGroceryOwner)
+router.delete('/grocery-owners/:id', deleteGroceryOwner)
 
 router.get('/chef-payments', getChefPayments)
 router.get('/bookings', getAdminBookings)

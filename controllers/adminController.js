@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import bcrypt from 'bcrypt'
 import mongoose from 'mongoose'
 import ChefProfile from '../models/ChefProfile.js'
 import GroceryStore from '../models/GroceryStore.js'
@@ -183,6 +184,56 @@ export const getStores = async (req, res) => {
         .sort({ createdAt: -1 })
 
     res.status(200).json({ status: 'success', count: stores.length, stores })
+}
+
+export const getGroceryOwners = async (req, res) => {
+    const stores = await GroceryStore.find().populate('owner', 'name email phone city status suspendedReason createdAt').sort({ city: 1 })
+    res.status(200).json({ status: 'success', count: stores.length, stores })
+}
+
+export const createGroceryOwner = async (req, res) => {
+    const { name, email, password, phone, storeName, city, address } = req.body
+    if (await User.exists({ email })) throw Object.assign(new Error('An account with this email already exists'), { statusCode: 409 })
+    if (await GroceryStore.exists({ city })) throw Object.assign(new Error(`A grocery owner is already assigned to ${city}`), { statusCode: 409 })
+    const hashedPassword = await bcrypt.hash(password, 12)
+    const user = await User.create({ name, email, password: hashedPassword, phone, role: 'grocery_owner', city })
+    try {
+        const store = await GroceryStore.create({ owner: user._id, name: storeName, city, address, approvalStatus: 'approved' })
+        return res.status(201).json({ status: 'success', message: `Grocery owner for ${city} created and store activated`, store: { ...store.toObject(), owner: { _id: user._id, name, email, phone, city, status: user.status } } })
+    } catch (error) {
+        await User.deleteOne({ _id: user._id })
+        if (error.code === 11000) throw Object.assign(new Error(`A grocery owner or store is already assigned to ${city}`), { statusCode: 409 })
+        throw error
+    }
+}
+
+export const updateGroceryOwner = async (req, res) => {
+    const { id } = req.params
+    if (!mongoose.isValidObjectId(id)) throw Object.assign(new Error('Invalid grocery owner id'), { statusCode: 400 })
+    const store = await GroceryStore.findById(id).populate('owner')
+    if (!store || !store.owner || store.owner.role !== 'grocery_owner') throw Object.assign(new Error('Grocery owner not found'), { statusCode: 404 })
+    const { name, email, password, phone, storeName, city, address } = req.body
+    if (email && email !== store.owner.email && await User.exists({ email, _id: { $ne: store.owner._id } })) throw Object.assign(new Error('An account with this email already exists'), { statusCode: 409 })
+    if (city && city !== store.city && await GroceryStore.exists({ city, _id: { $ne: store._id } })) throw Object.assign(new Error(`A grocery owner is already assigned to ${city}`), { statusCode: 409 })
+    if (name !== undefined) store.owner.name = name
+    if (email !== undefined) store.owner.email = email
+    if (phone !== undefined) store.owner.phone = phone
+    if (city !== undefined) { store.owner.city = city; store.city = city }
+    if (password) store.owner.password = await bcrypt.hash(password, 12)
+    if (storeName !== undefined) store.name = storeName
+    if (address !== undefined) store.address = address
+    await Promise.all([store.owner.save(), store.save()])
+    res.status(200).json({ status: 'success', message: 'Grocery owner and store updated', store: await GroceryStore.findById(store._id).populate('owner', 'name email phone city status suspendedReason createdAt') })
+}
+
+export const deleteGroceryOwner = async (req, res) => {
+    const { id } = req.params
+    if (!mongoose.isValidObjectId(id)) throw Object.assign(new Error('Invalid grocery owner id'), { statusCode: 400 })
+    const store = await GroceryStore.findById(id)
+    if (!store) throw Object.assign(new Error('Grocery owner not found'), { statusCode: 404 })
+    if (await Booking.exists({ groceryStore: store._id })) throw Object.assign(new Error('This store has order history. Suspend the owner instead to preserve records.'), { statusCode: 409 })
+    await Promise.all([GroceryItem.deleteMany({ store: store._id }), GroceryStore.deleteOne({ _id: store._id }), User.deleteOne({ _id: store.owner })])
+    res.status(200).json({ status: 'success', message: 'Grocery owner account and store deleted' })
 }
 
 export const updateStoreApproval = async (req, res) => {
@@ -414,19 +465,22 @@ export const updateUserStatus = async (req, res) => {
         user.refreshToken = undefined     // ends every session immediately
         await user.save()
 
-        // Their upcoming bookings are cancelled; the other side sees the reason
-        const who = user.role === 'chef' ? 'Chef' : 'Customer'
-        const upcoming = { status: { $in: ['pending', 'confirmed'] }, slotEnd: { $gt: new Date() } }
-        const field = user.role === 'chef' ? 'chef' : 'customer'
-        await Booking.updateMany(
-            { ...upcoming, [field]: user._id, groceryStatus: { $in: ['ordered', 'packed'] } },
-            { groceryStatus: 'cancelled' }
-        )
-        const result = await Booking.updateMany(
-            { ...upcoming, [field]: user._id },
-            { status: 'cancelled', slotLocked: false, cancelledBy: 'system', cancelReason: `${who} not available, booking cancelled` }
-        )
-        cancelledBookings = result.modifiedCount
+        // Grocery owners do not book chef sessions, so suspension only revokes
+        // their store portal access and preserves their store/order history.
+        if (user.role !== 'grocery_owner') {
+            const who = user.role === 'chef' ? 'Chef' : 'Customer'
+            const upcoming = { status: { $in: ['pending', 'confirmed'] }, slotEnd: { $gt: new Date() } }
+            const field = user.role === 'chef' ? 'chef' : 'customer'
+            await Booking.updateMany(
+                { ...upcoming, [field]: user._id, groceryStatus: { $in: ['ordered', 'packed'] } },
+                { groceryStatus: 'cancelled' }
+            )
+            const result = await Booking.updateMany(
+                { ...upcoming, [field]: user._id },
+                { status: 'cancelled', slotLocked: false, cancelledBy: 'system', cancelReason: `${who} not available, booking cancelled` }
+            )
+            cancelledBookings = result.modifiedCount
+        }
     } else {
         user.status = 'active'
         user.suspendedReason = undefined
