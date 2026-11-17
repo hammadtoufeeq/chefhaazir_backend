@@ -472,7 +472,7 @@ export const updateUserStatus = async (req, res) => {
             const upcoming = { status: { $in: ['pending', 'confirmed'] }, slotEnd: { $gt: new Date() } }
             const field = user.role === 'chef' ? 'chef' : 'customer'
             await Booking.updateMany(
-                { ...upcoming, [field]: user._id, groceryStatus: { $in: ['ordered', 'packed'] } },
+                { ...upcoming, [field]: user._id, groceryStatus: { $in: ['ordered', 'packed', 'out_for_delivery'] } },
                 { groceryStatus: 'cancelled' }
             )
             const result = await Booking.updateMany(

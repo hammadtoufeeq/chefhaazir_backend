@@ -59,9 +59,13 @@ const bookingSchema = new mongoose.Schema(
 
         groceryStatus: {
             type: String,
-            enum: ['none', 'ordered', 'packed', 'delivered_to_chef', 'return_requested', 'return_verified', 'cancelled'],
+            enum: ['none', 'ordered', 'packed', 'out_for_delivery', 'delivered_to_chef', 'return_requested', 'return_verified', 'cancelled'],
             default: 'none'
         },
+        // When the grocery store moved the order to each step
+        groceryPackedAt: { type: Date },
+        groceryShippedAt: { type: Date },
+        groceryDeliveredAt: { type: Date },
         settlement: { type: mongoose.Schema.Types.ObjectId, ref: 'Settlement' }
     },
     { timestamps: true }

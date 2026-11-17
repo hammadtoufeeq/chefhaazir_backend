@@ -228,7 +228,7 @@ export const getMyOrders = async (req, res) => {
     const orders = await Booking.find(filter)
         .populate('chef', 'name phone')
         .populate('chefProfile', 'address city')
-        .select('date slot slotStart status groceryItems grocerySubtotal deliveryFee groceryStatus chef chefProfile')
+        .select('date slot slotStart slotEnd status groceryItems grocerySubtotal deliveryFee groceryStatus groceryPackedAt groceryShippedAt groceryDeliveredAt cancelReason createdAt chef chefProfile')
         .sort({ slotStart: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -256,7 +256,9 @@ const findMyOrder = async (bookingId, store) => {
     return booking
 }
 
-const NEXT_STEP = { ordered: 'packed', packed: 'delivered_to_chef' }
+// ordered -> packed -> out_for_delivery -> delivered_to_chef
+const NEXT_STEP = { ordered: 'packed', packed: 'out_for_delivery', out_for_delivery: 'delivered_to_chef' }
+const STEP_TIME = { packed: 'groceryPackedAt', out_for_delivery: 'groceryShippedAt', delivered_to_chef: 'groceryDeliveredAt' }
 
 export const updateOrderStatus = async (req, res) => {
     const store = await findMyStore(req.user._id, true)
@@ -275,9 +277,11 @@ export const updateOrderStatus = async (req, res) => {
     }
 
     booking.groceryStatus = status
+    booking[STEP_TIME[status]] = new Date()
     await booking.save()
 
-    res.status(200).json({ status: 'success', message: `Order marked as ${status}`, groceryStatus: booking.groceryStatus })
+    const messages = { packed: 'Order packed', out_for_delivery: 'Order sent out to the chef', delivered_to_chef: 'Order delivered to the chef' }
+    res.status(200).json({ status: 'success', message: messages[status], groceryStatus: booking.groceryStatus })
 }
 
 export const verifyReturn = async (req, res) => {
