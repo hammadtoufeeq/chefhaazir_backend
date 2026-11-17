@@ -6,6 +6,7 @@ import Booking from '../models/Booking.js'
 import Settlement from '../models/Settlement.js'
 import User from '../models/User.js'
 import Issue from '../models/Issue.js'
+import GroceryItem from '../models/GroceryItem.js'
 import { userListQuerySchema } from '../zod-validator/issue_zod_schema.js'
 import { payableFilter, getPaymentBlockedChefIds } from '../utils/payments.js'
 
@@ -74,6 +75,56 @@ export const generateChefOtp = async (req, res) => {
     })
 }
 
+export const verifyChefOtpAsAdmin = async (req, res) => {
+    const { id } = req.params
+    if (!mongoose.isValidObjectId(id)) throw Object.assign(new Error('Invalid chef id'), { statusCode: 400 })
+    const profile = await ChefProfile.findById(id).select('+otpHash +otpExpiresAt').populate('user', 'name')
+    if (!profile) throw Object.assign(new Error('Chef profile not found'), { statusCode: 404 })
+    if (profile.phoneVerified) throw Object.assign(new Error('This chef is already verified'), { statusCode: 409 })
+    if (!profile.otpHash || !profile.otpExpiresAt || profile.otpExpiresAt.getTime() <= Date.now()) {
+        throw Object.assign(new Error('Generate a new OTP first; the previous code has expired'), { statusCode: 400 })
+    }
+    const submitted = crypto.createHash('sha256').update(req.body.otp).digest()
+    const expected = Buffer.from(profile.otpHash, 'hex')
+    if (submitted.length !== expected.length || !crypto.timingSafeEqual(submitted, expected)) {
+        throw Object.assign(new Error('That OTP is incorrect'), { statusCode: 400 })
+    }
+    profile.phoneVerified = true
+    profile.otpHash = undefined
+    profile.otpExpiresAt = undefined
+    await profile.save()
+    res.status(200).json({ status: 'success', message: `Phone verified for ${profile.user.name}`, phoneVerified: true })
+}
+
+export const deleteChefProfile = async (req, res) => {
+    const { id } = req.params
+    if (!mongoose.isValidObjectId(id)) throw Object.assign(new Error('Invalid chef id'), { statusCode: 400 })
+    const profile = await ChefProfile.findById(id)
+    if (!profile) throw Object.assign(new Error('Chef profile not found'), { statusCode: 404 })
+    const userId = profile.user
+    const [hasBookings, hasSettlements, hasIssues] = await Promise.all([
+        Booking.exists({ chef: userId }),
+        Settlement.exists({ chef: userId }),
+        Issue.exists({ $or: [{ reportedBy: userId }, { against: userId }] })
+    ])
+    if (hasBookings || hasSettlements || hasIssues) {
+        throw Object.assign(new Error('This chef has booking or payment history. Suspend the account instead to preserve records.'), { statusCode: 409 })
+    }
+    await Promise.all([ChefProfile.deleteOne({ _id: profile._id }), User.deleteOne({ _id: userId })])
+    res.status(200).json({ status: 'success', message: 'Chef profile and account deleted' })
+}
+
+export const deleteGroceryStore = async (req, res) => {
+    const { id } = req.params
+    if (!mongoose.isValidObjectId(id)) throw Object.assign(new Error('Invalid store id'), { statusCode: 400 })
+    const store = await GroceryStore.findById(id)
+    if (!store) throw Object.assign(new Error('Store not found'), { statusCode: 404 })
+    const hasBookings = await Booking.exists({ groceryStore: store._id })
+    if (hasBookings) throw Object.assign(new Error('This store has booking history. Suspend its owner instead to preserve records.'), { statusCode: 409 })
+    await Promise.all([GroceryItem.deleteMany({ store: store._id }), GroceryStore.deleteOne({ _id: store._id })])
+    res.status(200).json({ status: 'success', message: `${store.name} and its catalog were deleted` })
+}
+
 export const updateChefApproval = async (req, res) => {
     const { id } = req.params
     const { status } = req.body
@@ -136,7 +187,7 @@ export const getStores = async (req, res) => {
 
 export const updateStoreApproval = async (req, res) => {
     const { id } = req.params
-    const { status } = req.body
+    const { status, override = false } = req.body
 
     if (!mongoose.isValidObjectId(id)) {
         const error = new Error('Invalid store id')
@@ -157,10 +208,16 @@ export const updateStoreApproval = async (req, res) => {
             approvalStatus: 'approved',
             _id: { $ne: store._id }
         })
-        if (otherApproved) {
+        if (otherApproved && !override) {
             const error = new Error(`${store.city} already has an approved store (${otherApproved.name})`)
             error.statusCode = 409
             throw error
+        }
+        // The unique one-store-per-city index stays intact: move the existing
+        // hub out of approved before activating its replacement.
+        if (otherApproved && override) {
+            otherApproved.approvalStatus = 'rejected'
+            await otherApproved.save()
         }
     }
 

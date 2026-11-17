@@ -5,7 +5,12 @@ export const chefApprovalSchema = z.object({
 })
 
 export const storeApprovalSchema = z.object({
-    status: z.enum(['approved', 'rejected'], 'Status must be approved or rejected')
+    status: z.enum(['approved', 'rejected'], 'Status must be approved or rejected'),
+    override: z.boolean().optional()
+})
+
+export const adminOtpVerifySchema = z.object({
+    otp: z.string('OTP must be text').trim().regex(/^\d{6}$/, 'Enter the 6-digit verification code')
 })
 
 export const settingsSchema = z.object({
