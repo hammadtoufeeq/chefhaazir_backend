@@ -358,16 +358,24 @@ export const getAdminBookings = async (req, res) => {
     }
     const filter = status ? { status } : {}
     const total = await Booking.countDocuments(filter)
-    const bookings = await Booking.find(filter)
-        .populate('customer', 'name email phone')
-        .populate('chef', 'name email phone')
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
+    const [bookings, completedRows, totalBookings] = await Promise.all([
+        Booking.find(filter)
+            .populate('customer', 'name email phone')
+            .populate('chef', 'name email phone')
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit),
+        Booking.aggregate([
+            { $match: { status: 'completed' } },
+            { $group: { _id: null, completedOrderValue: { $sum: '$totalFromCustomer' }, platformEarned: { $sum: { $add: ['$commissionAmount', '$grocerySubtotal'] } } } }
+        ]),
+        Booking.countDocuments({})
+    ])
 
     res.status(200).json({
         status: 'success',
         bookings,
+        bookingStats: { totalBookings, ...(completedRows[0] || { completedOrderValue: 0, platformEarned: 0 }) },
         pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
     })
 }
