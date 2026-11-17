@@ -233,8 +233,15 @@ export const updateStoreApproval = async (req, res) => {
 
 // One card per chef: amount due, payment waiting for verification, last verified payment
 export const getChefPayments = async (req, res) => {
+    // These are the two finance figures shown to admins. A submitted payment
+    // moves from pending to earned only after an admin verifies it.
+    const [settlementTotals, due] = await Promise.all([
+        Settlement.aggregate([
+            { $match: { status: { $in: ['submitted', 'verified'] } } },
+            { $group: { _id: '$status', amount: { $sum: '$amount' }, payments: { $sum: 1 } } }
+        ]),
     // Aggregation: group every unpaid payable booking by chef and add up what is owed
-    const due = await Booking.aggregate([
+    Booking.aggregate([
         { $match: payableFilter() },
         {
             $group: {
@@ -246,6 +253,7 @@ export const getChefPayments = async (req, res) => {
             }
         },
         { $addFields: { totalDue: { $add: ['$commission', '$groceries', '$delivery'] } } }
+    ])
     ])
 
     const awaiting = await Settlement.find({ status: 'submitted' }).select('chef amount method transactionId submittedAt')
@@ -282,7 +290,13 @@ export const getChefPayments = async (req, res) => {
     })
     cards.sort((a, b) => b.totalDue - a.totalDue)
 
-    res.status(200).json({ status: 'success', count: cards.length, chefs: cards })
+    const totals = {
+        earned: settlementTotals.find((row) => row._id === 'verified')?.amount || 0,
+        pendingVerification: settlementTotals.find((row) => row._id === 'submitted')?.amount || 0,
+        verifiedPayments: settlementTotals.find((row) => row._id === 'verified')?.payments || 0,
+        pendingPayments: settlementTotals.find((row) => row._id === 'submitted')?.payments || 0
+    }
+    res.status(200).json({ status: 'success', count: cards.length, totals, chefs: cards })
 }
 
 // Accounts with their total and genuine issue counts (aggregation)
