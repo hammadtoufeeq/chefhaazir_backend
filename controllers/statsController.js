@@ -157,24 +157,33 @@ export const getStoreStats = async (req, res) => {
         { $match: { groceryStore: store._id, status: 'completed' } },
         { $group: { _id: null, orders: { $sum: 1 }, sales: { $sum: '$grocerySubtotal' }, deliveryFees: { $sum: '$deliveryFee' } } }
     ])
+    // Open orders: upcoming ones are counted per step; ones past their delivery time
+    // (or on an already completed booking) are counted together as "missed"
+    const openStatuses = ['ordered', 'packed', 'out_for_delivery']
     const openRows = await Booking.aggregate([
         {
             $match: {
                 groceryStore: store._id,
                 $or: [
-                    { status: 'confirmed', groceryStatus: { $in: ['ordered', 'packed'] } },
+                    { status: { $in: ['confirmed', 'completed', 'disputed'] }, groceryStatus: { $in: openStatuses } },
                     { groceryStatus: 'return_requested' }
                 ]
             }
         },
-        { $group: { _id: '$groceryStatus', count: { $sum: 1 } } }
+        { $group: { _id: { groceryStatus: '$groceryStatus', missed: { $lt: ['$slotStart', new Date()] } }, count: { $sum: 1 } } }
     ])
+    const needsAction = {}
+    for (const row of openRows) {
+        const { groceryStatus, missed } = row._id
+        const key = groceryStatus === 'return_requested' ? 'return_requested' : missed ? 'missed' : groceryStatus
+        needsAction[key] = (needsAction[key] || 0) + row.count
+    }
 
     res.status(200).json({
         status: 'success',
         store: { id: store._id, name: store.name, city: store.city },
         sales: salesRows[0] ? { orders: salesRows[0].orders, sales: salesRows[0].sales, deliveryFees: salesRows[0].deliveryFees } : { orders: 0, sales: 0, deliveryFees: 0 },
-        needsAction: Object.fromEntries(openRows.map((r) => [r._id, r.count])),
+        needsAction,
         topItems: await bestSellingItems({ groceryStore: store._id })
     })
 }

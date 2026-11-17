@@ -211,6 +211,9 @@ export const getItems = async (req, res) => {
 
 // ---------- Grocery owner: orders that come from confirmed bookings ----------
 
+// Bookings whose groceries still matter to the store (not cancelled, rejected or expired)
+const ACTIVE_BOOKING_STATUSES = ['confirmed', 'completed', 'disputed']
+
 export const getMyOrders = async (req, res) => {
     const store = await findMyStore(req.user._id, false)
 
@@ -220,16 +223,32 @@ export const getMyOrders = async (req, res) => {
         error.statusCode = 400
         throw error
     }
-    const { status, page, limit } = result.data
+    const { status, view, page, limit } = result.data
 
     const filter = { groceryStore: store._id, groceryStatus: status || { $ne: 'none' } }
+
+    // An order that is still open is either upcoming (delivery time not reached yet)
+    // or missed (delivery time passed, or the booking already completed, and the store
+    // never marked it delivered). The store can still update missed orders.
+    const openStatuses = ['ordered', 'packed', 'out_for_delivery']
+    const listView = view || (openStatuses.includes(status) ? 'upcoming' : null)
+    if (listView) {
+        filter.groceryStatus = openStatuses.includes(status) ? status : { $in: openStatuses }
+        if (listView === 'missed') {
+            filter.status = { $in: ACTIVE_BOOKING_STATUSES }
+            filter.slotStart = { $lt: new Date() }
+        } else {
+            filter.status = 'confirmed'
+            filter.slotStart = { $gte: new Date() }
+        }
+    }
 
     const total = await Booking.countDocuments(filter)
     const orders = await Booking.find(filter)
         .populate('chef', 'name phone')
         .populate('chefProfile', 'address city')
-        .select('date slot slotStart status groceryItems grocerySubtotal deliveryFee groceryStatus chef chefProfile')
-        .sort({ slotStart: 1 })
+        .select('date slot slotStart slotEnd status groceryItems grocerySubtotal deliveryFee groceryStatus groceryPackedAt groceryShippedAt groceryDeliveredAt cancelReason createdAt chef chefProfile')
+        .sort({ slotStart: status === 'delivered_to_chef' ? -1 : 1 })
         .skip((page - 1) * limit)
         .limit(limit)
 
@@ -256,28 +275,49 @@ const findMyOrder = async (bookingId, store) => {
     return booking
 }
 
-const NEXT_STEP = { ordered: 'packed', packed: 'delivered_to_chef' }
+// ordered -> packed -> out_for_delivery -> delivered_to_chef
+const ORDER_FLOW = ['ordered', 'packed', 'out_for_delivery', 'delivered_to_chef']
+const STEP_TIME = { packed: 'groceryPackedAt', out_for_delivery: 'groceryShippedAt', delivered_to_chef: 'groceryDeliveredAt' }
 
 export const updateOrderStatus = async (req, res) => {
     const store = await findMyStore(req.user._id, true)
     const booking = await findMyOrder(req.params.bookingId, store)
     const { status } = req.body
 
-    if (booking.status !== 'confirmed') {
-        const error = new Error(`Groceries can only be sent for confirmed bookings (this one is ${booking.status})`)
+    // Completed bookings are still allowed: the store may have forgotten to update the order
+    if (!ACTIVE_BOOKING_STATUSES.includes(booking.status)) {
+        const error = new Error(`Groceries can only be sent for active bookings (this one is ${booking.status})`)
         error.statusCode = 409
         throw error
     }
-    if (NEXT_STEP[booking.groceryStatus] !== status) {
+
+    const from = ORDER_FLOW.indexOf(booking.groceryStatus)
+    const to = ORDER_FLOW.indexOf(status)
+    if (from === -1 || to <= from) {
         const error = new Error(`Order is ${booking.groceryStatus}; it cannot move to ${status}`)
         error.statusCode = 409
         throw error
     }
 
+    // Normally one step at a time. A missed order (delivery time passed, or booking
+    // already completed) may jump ahead, e.g. straight to delivered.
+    const missed = booking.status !== 'confirmed' || booking.slotStart.getTime() < Date.now()
+    if (to !== from + 1 && !missed) {
+        const error = new Error(`Order is ${booking.groceryStatus}; move it one step at a time`)
+        error.statusCode = 409
+        throw error
+    }
+
+    const now = new Date()
+    for (let i = from + 1; i <= to; i++) {
+        const field = STEP_TIME[ORDER_FLOW[i]]
+        booking[field] = booking[field] || now
+    }
     booking.groceryStatus = status
     await booking.save()
 
-    res.status(200).json({ status: 'success', message: `Order marked as ${status}`, groceryStatus: booking.groceryStatus })
+    const messages = { packed: 'Order packed', out_for_delivery: 'Order sent out to the chef', delivered_to_chef: 'Order delivered to the chef' }
+    res.status(200).json({ status: 'success', message: messages[status], groceryStatus: booking.groceryStatus })
 }
 
 export const verifyReturn = async (req, res) => {
