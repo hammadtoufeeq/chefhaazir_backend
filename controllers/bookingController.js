@@ -232,6 +232,8 @@ export const getChefBookings = async (req, res) => {
     const total = await Booking.countDocuments(filter)
     const bookings = await Booking.find(filter)
         .populate('customer', 'name')
+        // The store delivering this booking's groceries, so the chef can contact it
+        .populate({ path: 'groceryStore', select: 'name city owner', populate: { path: 'owner', select: 'name phone' } })
         .sort({ slotStart: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
@@ -432,7 +434,7 @@ export const cancelBooking = async (req, res) => {
     booking.cancelledBy = role === 'admin' ? 'admin' : isChef ? 'chef' : 'user'
     booking.cancelReason = req.body.reason
     // Groceries not yet with the chef are simply cancelled; delivered ones need a return
-    if (['ordered', 'packed'].includes(booking.groceryStatus)) {
+    if (['ordered', 'packed', 'out_for_delivery'].includes(booking.groceryStatus)) {
         booking.groceryStatus = 'cancelled'
     }
     await booking.save()

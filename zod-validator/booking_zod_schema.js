@@ -38,8 +38,11 @@ export const groceryOrderStatusSchema = z.object({
 
 export const groceryOrdersQuerySchema = z.object({
     status: z.enum(['ordered', 'packed', 'out_for_delivery', 'delivered_to_chef', 'return_requested', 'return_verified', 'cancelled'], 'Invalid grocery status').optional(),
+<<<<<<< HEAD
     // upcoming = still before its delivery time, missed = delivery time passed but not marked delivered
     view: z.enum(['upcoming', 'missed'], 'View must be upcoming or missed').optional(),
+=======
+>>>>>>> 360156876a0ab8ca2e47750e654dee17205e91e5
     page: z.coerce.number('page must be a number').int('page must be a whole number').min(1, 'page must be at least 1').default(1),
     limit: z.coerce.number('limit must be a number').int('limit must be a whole number').min(1, 'limit must be at least 1').max(50, 'limit cannot be more than 50').default(20)
 })
