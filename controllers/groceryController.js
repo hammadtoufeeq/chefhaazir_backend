@@ -248,11 +248,7 @@ export const getMyOrders = async (req, res) => {
         .populate('chef', 'name phone')
         .populate('chefProfile', 'address city')
         .select('date slot slotStart slotEnd status groceryItems grocerySubtotal deliveryFee groceryStatus groceryPackedAt groceryShippedAt groceryDeliveredAt cancelReason createdAt chef chefProfile')
-<<<<<<< HEAD
         .sort({ slotStart: status === 'delivered_to_chef' ? -1 : 1 })
-=======
-        .sort({ slotStart: 1 })
->>>>>>> 360156876a0ab8ca2e47750e654dee17205e91e5
         .skip((page - 1) * limit)
         .limit(limit)
 
@@ -280,11 +276,7 @@ const findMyOrder = async (bookingId, store) => {
 }
 
 // ordered -> packed -> out_for_delivery -> delivered_to_chef
-<<<<<<< HEAD
 const ORDER_FLOW = ['ordered', 'packed', 'out_for_delivery', 'delivered_to_chef']
-=======
-const NEXT_STEP = { ordered: 'packed', packed: 'out_for_delivery', out_for_delivery: 'delivered_to_chef' }
->>>>>>> 360156876a0ab8ca2e47750e654dee17205e91e5
 const STEP_TIME = { packed: 'groceryPackedAt', out_for_delivery: 'groceryShippedAt', delivered_to_chef: 'groceryDeliveredAt' }
 
 export const updateOrderStatus = async (req, res) => {
@@ -322,7 +314,6 @@ export const updateOrderStatus = async (req, res) => {
         booking[field] = booking[field] || now
     }
     booking.groceryStatus = status
-    booking[STEP_TIME[status]] = new Date()
     await booking.save()
 
     const messages = { packed: 'Order packed', out_for_delivery: 'Order sent out to the chef', delivered_to_chef: 'Order delivered to the chef' }

@@ -165,11 +165,7 @@ export const getStoreStats = async (req, res) => {
             $match: {
                 groceryStore: store._id,
                 $or: [
-<<<<<<< HEAD
                     { status: { $in: ['confirmed', 'completed', 'disputed'] }, groceryStatus: { $in: openStatuses } },
-=======
-                    { status: 'confirmed', groceryStatus: { $in: ['ordered', 'packed', 'out_for_delivery'] } },
->>>>>>> 360156876a0ab8ca2e47750e654dee17205e91e5
                     { groceryStatus: 'return_requested' }
                 ]
             }
