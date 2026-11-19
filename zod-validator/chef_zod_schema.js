@@ -45,6 +45,14 @@ export const chefListQuerySchema = z.object({
     cuisine: cuisineName.optional(),
     minPrice: z.coerce.number('minPrice must be a number').min(0, 'minPrice cannot be negative').optional(),
     maxPrice: z.coerce.number('maxPrice must be a number').min(0, 'maxPrice cannot be negative').optional(),
+    // Only chefs free at this date and 2-hour slot (both must be sent together)
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD').optional(),
+    slot: z.enum(['08-10', '10-12', '12-14', '14-16', '16-18', '18-20', '20-22'], 'Please select a valid slot').optional(),
+    sort: z.enum(['newest', 'price_asc', 'price_desc'], 'Sort must be newest, price_asc or price_desc').default('newest'),
     page: z.coerce.number('page must be a number').int('page must be a whole number').min(1, 'page must be at least 1').default(1),
     limit: z.coerce.number('limit must be a number').int('limit must be a whole number').min(1, 'limit must be at least 1').max(50, 'limit cannot be more than 50').default(10)
+}).refine((q) => !q.date === !q.slot, 'Send both date and slot to filter by availability')
+
+export const chefFiltersQuerySchema = z.object({
+    city: z.enum(cities, 'Please select a valid city').optional()
 })

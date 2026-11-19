@@ -1,5 +1,5 @@
 import express from 'express'
-import { getMyProfile, getMyDashboardAnalytics, updateMyProfile, updateMyAvailability, acceptContract, verifyOtp, requestChefOtp, getChefs, getChefById } from '../controllers/chefController.js'
+import { getMyProfile, getMyDashboardAnalytics, updateMyProfile, updateMyAvailability, acceptContract, verifyOtp, requestChefOtp, getChefs, getChefFilters, getChefById } from '../controllers/chefController.js'
 import { protect, requireRole } from '../middleware/authMiddleware.js'
 import { validate } from '../middleware/validate.js'
 import { getChefAvailability } from '../controllers/bookingController.js'
@@ -18,6 +18,7 @@ router.get('/me/earnings', protect, requireRole('chef'), getMyEarnings)
 
 // Public: anyone (including guests) can browse chefs
 router.get('/', getChefs)
+router.get('/filters', getChefFilters)
 router.get('/:id', getChefById)
 router.get('/:id/availability', getChefAvailability)
 

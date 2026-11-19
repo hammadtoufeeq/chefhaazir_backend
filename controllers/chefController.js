@@ -1,12 +1,12 @@
 import crypto from 'crypto'
 import mongoose from 'mongoose'
-import { chefListQuerySchema } from '../zod-validator/chef_zod_schema.js'
+import { chefListQuerySchema, chefFiltersQuerySchema } from '../zod-validator/chef_zod_schema.js'
 import { getPaymentBlockedChefIds, isChefPaymentBlocked, payableFilter } from '../utils/payments.js'
 import ChefProfile from '../models/ChefProfile.js'
 import Booking, { refreshBookingStatuses } from '../models/Booking.js'
 import bcrypt from 'bcrypt'
 import User from '../models/User.js'
-import { todayInPakistan, addDays } from '../utils/time.js'
+import { todayInPakistan, addDays, getSlotTimes, isValidDate, HOUR } from '../utils/time.js'
 
 export const registerChef = async (req, res) => {
     const { name, email, password, phone, city, address, cuisines, ratePerSlot, bio } = req.body
@@ -315,16 +315,33 @@ export const getChefs = async (req, res) => {
         error.statusCode = 400
         throw error
     }
-    const { search, city, cuisine, minPrice, maxPrice, page, limit } = result.data
+    const { search, city, cuisine, minPrice, maxPrice, date, slot, sort, page, limit } = result.data
 
-    // Step 1: chef accounts that are active (and match the name search)
+    // Availability filter: the slot must be bookable (2 hours to 7 days ahead)
+    if (date) {
+        const today = todayInPakistan()
+        if (!isValidDate(date) || date < today || date > addDays(today, 7)) {
+            const error = new Error('Date must be between today and 7 days ahead')
+            error.statusCode = 400
+            throw error
+        }
+        if (getSlotTimes(date, slot).slotStart.getTime() - Date.now() < 2 * HOUR) {
+            const error = new Error('This slot starts too soon. Book at least 2 hours ahead')
+            error.statusCode = 400
+            throw error
+        }
+    }
+
+    // Step 1: chef accounts that are active
     // Payment-blocked chefs are hidden until they submit a payment
     const blockedIds = await getPaymentBlockedChefIds()
-    const userFilter = { role: 'chef', status: 'active', _id: { $nin: blockedIds } }
-    if (search) {
-        userFilter.name = { $regex: escapeRegex(search), $options: 'i' }
+    let excludedIds = blockedIds
+    if (date) {
+        // Chefs already holding this slot with a confirmed booking
+        const busy = await Booking.find({ date, slot, slotLocked: true }).distinct('chef')
+        excludedIds = [...blockedIds, ...busy]
     }
-    const users = await User.find(userFilter).select('_id')
+    const users = await User.find({ role: 'chef', status: 'active', _id: { $nin: excludedIds } }).select('_id name')
     const userIds = users.map((user) => user._id)
 
     // Step 2: only approved, verified chef profiles of those accounts
@@ -334,7 +351,16 @@ export const getChefs = async (req, res) => {
         phoneVerified: true
     }
     if (city) profileFilter.city = city
-    if (cuisine) profileFilter.cuisines = cuisine
+    // Cuisines are free text, so match them without caring about capital letters
+    if (cuisine) profileFilter.cuisines = { $regex: `^${escapeRegex(cuisine)}$`, $options: 'i' }
+    // Search matches the chef's name or any of their cuisines
+    if (search) {
+        const pattern = new RegExp(escapeRegex(search), 'i')
+        const nameMatches = users.filter((user) => pattern.test(user.name)).map((user) => user._id)
+        profileFilter.$or = [{ user: { $in: nameMatches } }, { cuisines: { $regex: escapeRegex(search), $options: 'i' } }]
+    }
+    // Chefs who marked themselves unavailable for this slot
+    if (date) profileFilter.unavailableSlots = { $not: { $elemMatch: { date, slot } } }
     if (minPrice !== undefined || maxPrice !== undefined) {
         profileFilter.ratePerSlot = {}
         if (minPrice !== undefined) profileFilter.ratePerSlot.$gte = minPrice
@@ -345,7 +371,7 @@ export const getChefs = async (req, res) => {
     const total = await ChefProfile.countDocuments(profileFilter)
     const profiles = await ChefProfile.find(profileFilter)
         .populate('user', 'name')
-        .sort({ createdAt: -1 })
+        .sort(sort === 'price_asc' ? { ratePerSlot: 1, _id: 1 } : sort === 'price_desc' ? { ratePerSlot: -1, _id: 1 } : { createdAt: -1, _id: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
 
@@ -365,6 +391,43 @@ export const getChefs = async (req, res) => {
             total,
             totalPages: Math.ceil(total / limit)
         }
+    })
+}
+
+// Real filter options for the Find Chefs page: the cuisines chefs offer (with counts)
+// and the lowest and highest price, for listed chefs in a city (or everywhere)
+export const getChefFilters = async (req, res) => {
+    const result = chefFiltersQuerySchema.safeParse(req.query)
+    if (!result.success) {
+        const error = new Error(result.error.issues[0].message)
+        error.statusCode = 400
+        throw error
+    }
+    const { city } = result.data
+    const blockedIds = await getPaymentBlockedChefIds()
+    const users = await User.find({ role: 'chef', status: 'active', _id: { $nin: blockedIds } }).select('_id')
+    const match = { user: { $in: users.map((user) => user._id) }, approvalStatus: 'approved', phoneVerified: true }
+    if (city) match.city = city
+
+    const [cuisineRows, priceRows] = await Promise.all([
+        ChefProfile.aggregate([
+            { $match: match },
+            { $unwind: '$cuisines' },
+            { $group: { _id: { $toLower: '$cuisines' }, name: { $first: '$cuisines' }, count: { $sum: 1 } } },
+            { $sort: { count: -1, name: 1 } },
+            { $limit: 30 }
+        ]),
+        ChefProfile.aggregate([
+            { $match: match },
+            { $group: { _id: null, min: { $min: '$ratePerSlot' }, max: { $max: '$ratePerSlot' }, chefs: { $sum: 1 } } }
+        ])
+    ])
+
+    res.status(200).json({
+        status: 'success',
+        cuisines: cuisineRows.map((row) => ({ name: row.name, count: row.count })),
+        price: priceRows[0] ? { min: priceRows[0].min, max: priceRows[0].max } : { min: 0, max: 0 },
+        totalChefs: priceRows[0]?.chefs || 0
     })
 }
 
